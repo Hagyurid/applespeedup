@@ -15,6 +15,13 @@
       "when": 1791502400000,
       "tag": "0001_source_weeks",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1791510000000,
+      "tag": "0002_ai_workflow_guard",
+      "breakpoints": true
     }
   ]
 }

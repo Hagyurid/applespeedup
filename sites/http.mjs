@@ -3,6 +3,7 @@
  * This module deliberately has NO fallback anonymous identity and never reads x-user-id.
  */
 import {createD1Repository} from './repository.mjs';
+import {createAiPipeline} from './ai-pipeline.mjs';
 import {handleMessage} from './mcp-core.mjs';
 import {storeAsset,downloadAsset,fileLimits} from './assets.mjs';
 const json=(body,status=200,extra={})=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...extra}});
@@ -17,10 +18,10 @@ async function readBody(request,max){
   const out=new Uint8Array(total);let pos=0;for(const c of chunks){out.set(c,pos);pos+=c.byteLength;}return out;
 }
 const decode=(b)=>JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(b));
-function statusOf(err){if(['FORBIDDEN'].includes(err?.code))return 403;if(err?.code==='NOT_FOUND')return 404;if(err?.code==='REVISION_CONFLICT')return 409;if(['BAD_REQUEST','BAD_FILE'].includes(err?.code))return 400;return 500;}
+function statusOf(err){if(['FORBIDDEN'].includes(err?.code))return 403;if(err?.code==='NOT_FOUND')return 404;if(err?.code==='REVISION_CONFLICT')return 409;if(err?.code==='REVIEW_INCOMPLETE'||err?.code==='OUTLINE_REQUIRED')return 422;if(['BAD_REQUEST','BAD_FILE'].includes(err?.code))return 400;return 500;}
 export function createHttpHandler({db,bucket,authenticate,allowedOrigin}={}){
   if(!db||typeof authenticate!=='function')throw Error('Verified authentication and a D1 binding are required');
-  const repo=createD1Repository(db);
+  const repo={...createD1Repository(db),...createAiPipeline(db)};
   return async function handle(request){
     const url=new URL(request.url),method=request.method;
     if(url.pathname==='/health'&&method==='GET')return json({status:'ready',service:'aplus-accelerator',backend:'configured'});
@@ -75,6 +76,24 @@ export function createHttpHandler({db,bucket,authenticate,allowedOrigin}={}){
           title:decodeURIComponent(request.headers.get('x-source-title')||''),provenance:decodeURIComponent(request.headers.get('x-source-provenance')||''),weeks,exam_year});
         return json(result,201);
       }
+      if(method==='GET'&&url.pathname==='/api/ai/progress')return json(await repo.getGenerationProgress(userId,{run_id:url.searchParams.get('run_id')}));
+      if(method==='GET'&&url.pathname==='/api/ai/reviewed-page')return json(await repo.getReviewedPage(userId,{source_id:url.searchParams.get('source_id'),page_num:Number(url.searchParams.get('page_num'))}));
+      if(method==='POST'&&url.pathname.startsWith('/api/ai/')){
+        const actions={
+          '/api/ai/review-page':'saveReviewedPage',
+          '/api/ai/finalize-review':'finalizeSourceReview',
+          '/api/ai/begin-generation':'beginGeneration',
+          '/api/ai/save-outline':'saveGenerationOutline',
+          '/api/ai/save-section':'saveGeneratedSection'
+        };
+        const name=actions[url.pathname];
+        if(!name)return fail(404,'Not found');
+        if(!request.headers.get('content-type')?.startsWith('application/json'))return fail(415,'JSON required');
+        const raw=await readBody(request,2*1024*1024);if(!raw)return fail(413,'Request too large');
+        let body;try{body=decode(raw);}catch{return fail(400,'Invalid JSON');}
+        if(!body||typeof body!=='object'||Array.isArray(body))return fail(400,'JSON object required');
+        return json(await repo[name](userId,body),201);
+      }
       if(method==='POST'&&['/api/courses','/api/offerings','/api/transcripts','/api/facts','/api/notes','/api/jobs','/api/checkpoints'].includes(url.pathname)){
         if(!request.headers.get('content-type')?.startsWith('application/json'))return fail(415,'JSON required');
         const raw=await readBody(request,2*1024*1024);if(!raw)return fail(413,'Request too large');
@@ -95,7 +114,7 @@ export function createHttpHandler({db,bucket,authenticate,allowedOrigin}={}){
     }catch(err){
       // Never expose SQL/R2 stack traces or secret metadata to the caller.
       const status=statusOf(err);
-      return fail(status,status===500?'Request failed':({403:'Not authorized',404:'Not found',409:'Revision conflict',400:'Invalid request'})[status]);
+      return fail(status,status===500?'Request failed':({403:'Not authorized',404:'Not found',409:'Revision conflict',422:'Prerequisite review or outline required',400:'Invalid request'})[status]);
     }
   };
 }

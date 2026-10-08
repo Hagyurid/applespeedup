@@ -82,3 +82,40 @@ export const attempts = sqliteTable('private_attempts', {
   id: text('id').primaryKey(), userId: text('user_id').notNull().references(() => users.id),
   packId: text('pack_id').notNull().references(() => packs.id), dataJson: text('data_json').notNull(), updatedAt: timestamp('updated_at'),
 }, t => [check('attempt_json', sql`json_valid(${t.dataJson})`)]);
+
+/** AI-mediated OCR/transcript verification. OCR text is not trusted until each page is reviewed. */
+export const sourceReviewPages = sqliteTable('source_review_pages', {
+  sourceId: text('source_id').notNull().references(() => assets.id, { onDelete: 'cascade' }),
+  pageNum: integer('page_num').notNull(),
+  recognizedText: text('recognized_text').notNull(),
+  correctedText: text('corrected_text').notNull(),
+  evidenceIds: text('evidence_source_ids_json').notNull().default('[]'),
+  unresolved: text('unresolved_json').notNull().default('[]'),
+  status: text('review_status').notNull().default('needs_review'),
+  updatedAt: timestamp('updated_at'),
+}, t => [primaryKey({ columns: [t.sourceId, t.pageNum] }),
+  check('source_review_status', sql`${t.status} IN ('needs_review','reviewed')`),
+  check('source_review_evidence_json', sql`json_valid(${t.evidenceIds})`),
+  check('source_review_unresolved_json', sql`json_valid(${t.unresolved})`)]);
+export const aiGenerationRuns = sqliteTable('ai_generation_runs', {
+  id: text('id').primaryKey(),
+  courseId: text('course_id').notNull().references(() => courses.id, { onDelete: 'cascade' }),
+  offeringId: text('offering_id').notNull().references(() => offerings.id, { onDelete: 'cascade' }),
+  createdBy: text('created_by_user_id').notNull().references(() => users.id),
+  mode: text('mode').notNull(), scope: text('scope').notNull().default(''),
+  sourceIds: text('source_ids_json').notNull().default('[]'),
+  status: text('status').notNull().default('awaiting_outline'),
+  outline: text('outline_json').notNull().default('[]'),
+  noteId: text('note_id').references(() => notes.id),
+  updatedAt: timestamp('updated_at'),
+}, t => [
+  check('ai_run_status', sql`${t.status} IN ('awaiting_outline','outlined','generating','complete','blocked')`),
+  check('ai_run_sources_json', sql`json_valid(${t.sourceIds})`),
+  check('ai_run_outline_json', sql`json_valid(${t.outline})`),
+]);
+export const aiGenerationSections = sqliteTable('ai_generation_sections', {
+  runId: text('run_id').notNull().references(() => aiGenerationRuns.id, { onDelete: 'cascade' }),
+  sectionIndex: integer('section_index').notNull(),
+  content: text('content_markdown').notNull(),
+  createdAt: timestamp('created_at'),
+}, t => [primaryKey({ columns: [t.runId, t.sectionIndex] })]);

@@ -13,7 +13,7 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate && node scripts/sync-test-schema.mjs",
     "test": "node --test tests/*.test.mjs",
-    "check": "node --check web/app.js && node --check web/db.js && node --check web/connected.js && node --check domain/core.mjs && node --check sites/mcp-core.mjs && node --check sites/repository.mjs && node --check sites/assets.mjs && node --check sites/http.mjs && node --check sites/auth.mjs && node --check sites/runtime.mjs && node --check sites/content.mjs",
+    "check": "node --check web/app.js && node --check web/db.js && node --check web/connected.js && node --check domain/core.mjs && node --check sites/ai-pipeline.mjs && node --check sites/mcp-core.mjs && node --check sites/repository.mjs && node --check sites/assets.mjs && node --check sites/http.mjs && node --check sites/auth.mjs && node --check sites/runtime.mjs && node --check sites/content.mjs",
     "serve": "python3 -m http.server 8765",
     "typecheck": "tsc --noEmit",
     "test:worker": "node tests/worker.integration.mjs"
