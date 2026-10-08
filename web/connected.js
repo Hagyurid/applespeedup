@@ -1,11 +1,31 @@
 import {DEFAULT_PRESETS,makeRequest} from '../domain/core.mjs';
 const $=id=>document.getElementById(id);
 const state={courses:[],offerings:[],sources:[],notes:[],facts:[],editingNote:null,activeOffering:null,busy:false,writesEnabled:false,noteRequest:null,drafts:new Map()};
-const setStatus=msg=>{$('status').textContent=msg;};
+const pageNames={courses:'강의 관리',sources:'강의자료',gpt:'GPT 작업',notes:'정리본'};
+const setStatus=msg=>{$('status').textContent=msg;const side=$('sidebarStatus');if(side)side.textContent=msg;};
 const fail=msg=>{$('error').textContent=msg;$('error').hidden=false;};
 const clear=()=>{$('error').hidden=true;};
 const course=()=>state.courses.find(x=>x.id===$('course').value);
 const offering=()=>state.offerings.find(x=>x.id===$('offering').value);
+function pageFromLocation(){const page=location.hash.slice(1);return pageNames[page]?page:'courses';}
+function showPage(page,{push=false,focus=false}={}){
+  const active=pageNames[page]?page:'courses';
+  for(const panel of document.querySelectorAll('[data-page-panel]'))panel.hidden=panel.dataset.pagePanel!==active;
+  for(const button of document.querySelectorAll('[data-page-target]')){
+    const selected=button.dataset.pageTarget===active;button.classList.toggle('active',selected);
+    if(selected)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');
+  }
+  if(push&&location.hash!==`#${active}`)history.pushState({page:active},'',`#${active}`);
+  else if(!location.hash)history.replaceState({page:active},'',`#${active}`);
+  document.title=`${pageNames[active]} | 에쁠가속기`;
+  $('pageAnnouncement').textContent=`${pageNames[active]} 화면`;
+  window.scrollTo({top:0,behavior:'auto'});
+  if(focus){const heading=document.querySelector(`[data-page-panel="${active}"] h1`);heading?.setAttribute('tabindex','-1');heading?.focus({preventScroll:true});}
+}
+function bindNavigation(){
+  for(const button of document.querySelectorAll('[data-page-target]'))button.addEventListener('click',()=>showPage(button.dataset.pageTarget,{push:true,focus:true}));
+  window.addEventListener('popstate',()=>showPage(pageFromLocation()));showPage(pageFromLocation());
+}
 async function call(path,options={}){
   const r=await fetch(path,{credentials:'same-origin',cache:'no-store',...options});
   if(!r.ok){
@@ -31,7 +51,7 @@ function renderSources(){
   for(const src of state.sources){
     const li=document.createElement('li'),text=document.createElement('span');
     text.textContent=`${src.title} · ${types[src.source_type]||src.source_type} · ${src.extract_status==='ready'?'검색 가능':src.extract_status==='failed'?'추출 실패':'원문 추출 대기'}`;li.append(text);
-    if(src.file_name){const b=document.createElement('button');b.type='button';b.className='ghost small';b.textContent='원본 다운로드';b.onclick=()=>location.assign(`/api/files/${encodeURIComponent(src.id)}`);li.append(b);}
+    if(src.file_name){const b=document.createElement('button');b.type='button';b.className='ghost small';b.textContent='원본 다운로드';b.onclick=()=>{const a=document.createElement('a');a.href=`/api/files/${encodeURIComponent(src.id)}`;a.click();};li.append(b);}
     node.append(li);
   }
 }
@@ -125,9 +145,11 @@ if(modelContext?.registerTool){
       if(state.busy||!offering())throw Error('강의 선택과 자료 로딩을 먼저 완료하세요.');
       const id=offering().id;const matches=await call(`/api/search?offering_id=${encodeURIComponent(id)}&query=${encodeURIComponent(input.query)}`);
       if(id!==offering()?.id)throw Error('선택한 강의가 바뀌었습니다. 다시 검색하세요.');
-      $('searchQuery').value=input.query;$('searchResults').replaceChildren(...(matches.length?matches.map(m=>empty(`${m.source_title}\n${m.content}`)):[empty('검색 결과가 없습니다.')]));return {offering_id:id,matches};
+      $('searchQuery').value=input.query;$('searchResults').replaceChildren(...(matches.length?matches.map(m=>empty(`${m.source_title}\n${m.content}`)):[empty('검색 결과가 없습니다.')]));showPage('sources',{push:true});return {offering_id:id,matches};
     }
   }];
   for(const tool of tools){try{Promise.resolve(modelContext.registerTool(tool,{signal:lifecycle.signal})).catch(()=>{});}catch{}}
   window.addEventListener('pagehide',()=>lifecycle.abort(),{once:true});
 }
+
+bindNavigation();

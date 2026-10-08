@@ -1,10 +1,172 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>에쁠가속기 | A+ Accelerator</title><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="connected.css"></head>
-<body><div class="connected-shell"><header><div class="brand-mark">A<span>+</span></div><div><strong>에쁠가속기</strong><small>A+ Accelerator</small></div><span class="spacer"></span><span id="accountName" class="account-name"></span><span class="tag" id="status">서버 연결 확인 중</span></header>
-<main class="connected-main"><h1>학습 작업 공간</h1><p class="muted">과목과 학년도를 선택한 뒤 전사본·강의자료를 등록하고 GPT 작업을 준비하세요.</p>
-<p id="lectureContext" class="lecture-context">강의를 선택하세요.</p><p id="readOnlyNotice" class="notice" hidden>첫 로그인 검증을 위해 자료 등록·수정이 잠겨 있습니다. 검증이 끝난 후 자료를 저장할 수 있습니다.</p><div role="alert" id="error" class="notice" hidden></div>
-<div class="two-col">
-<section class="card"><h2>1. 과목·학년도 관리</h2><label class="field">과목 선택<select id="course"></select></label><form id="course-form" class="inline-form"><label class="field">새 과목<input id="courseName" placeholder="예: 촉매반응공학" required maxlength="150"></label><label class="field">과목 특성<input id="characteristics" placeholder="수식·계산 중심" maxlength="1000"></label><button class="ghost" type="submit">과목 추가</button></form><div class="divider"></div><label class="field">학년도별 강의<select id="offering"></select></label><form id="offering-form" class="inline-form"><label class="field">연도<input id="year" type="number" min="1990" max="2100" value="2026" required></label><label class="field">학기<select id="term"><option>1</option><option selected>2</option><option>여름</option><option>겨울</option></select></label><label class="field">교수<input id="professor" maxlength="100" placeholder="담당 교수"></label><label class="field">분반<input id="section" maxlength="50" placeholder="예: 01"></label><button class="ghost" type="submit">강의 추가</button></form><h3>교수·시험 특성 및 근거</h3><ul id="factsList" class="compact-list"></ul><form id="fact-form" class="inline-form"><label class="field">특성 종류<select id="factKey"><option value="exam_type">시험 유형</option><option value="emphasis">교수 강조 내용</option><option value="study_style">정리·학습 스타일</option><option value="exam_scope">시험 범위</option><option value="other">기타 특징</option></select></label><label class="field">내용<input id="factValue" required maxlength="2000" placeholder="예: 수식 유도 과정 중시"></label><label class="field">근거<input id="factProvenance" maxlength="400" placeholder="예: 2025 기출 2번, 강의계획서"></label><label class="field">신뢰도<select id="factConfidence"><option value="unknown">미확인</option><option value="official">공식</option><option value="observed">기출로 확인</option><option value="reported">수강 후기</option><option value="inferred">추정</option></select></label><button class="ghost" type="submit">특성 기록 추가</button></form></section>
-<section class="card"><h2>2. 전사본·강의자료</h2><form id="source-form"><label class="field">자료 종류<select id="sourceType"><option value="transcript">강의 전사본</option><option value="lecture_slides">강의 슬라이드</option><option value="past_exam">과거 기출</option><option value="textbook">교재</option><option value="syllabus">강의계획서</option></select></label><label class="field">자료 제목<input id="sourceTitle" required maxlength="200" placeholder="예: 5주차 강의 전사본"></label><label class="field">전사본 붙여넣기 또는 TXT·MD·PDF 업로드<textarea id="transcript" rows="5" placeholder="녹음 파일이 아닌 전사된 텍스트를 붙여넣으세요."></textarea><input id="sourceFile" type="file" accept=".txt,.md,.pdf"></label><label class="field">출처·참고 연도<input id="provenance" maxlength="400" placeholder="2025 기출, 수업 자료 등"></label><button class="primary" type="submit">자료 저장</button></form><p class="hint">TXT·MD는 즉시 텍스트 검색에 반영됩니다. PDF는 원본 저장 후 '추출 대기'로 표시됩니다.</p><h3>등록 자료</h3><ul id="sourceList" class="compact-list"></ul><form id="search-form" class="inline-form"><label class="field">선택한 강의에서 검색<input id="searchQuery" required maxlength="180" placeholder="예: 유효계수"></label><button class="ghost" type="submit">검색</button></form><ul id="searchResults" class="compact-list search-results"></ul></section>
-<section class="card"><h2>3. GPT 자료 제작</h2><label class="field">제작 모드<select id="mode"><option value="detailed_note">상세 정리본</option><option value="outline">목차·단원 매핑</option><option value="subnote">서브노트</option><option value="exam_paper">시험형 문제집</option><option value="exam_cram">시험 직전 압축</option><option value="exam_trends">기출 경향 분석</option><option value="transcript_fix">전사본 교정</option><option value="errors">오답노트</option><option value="calculator">CASIO 코드 설계</option></select></label><label class="field">범위<input id="scope" value="5주차" maxlength="200"></label><button class="primary" id="copyPrompt" type="button">GPT 작업 요청문 복사</button><label class="field">요청문 미리보기<textarea id="prompt" rows="8" readonly></textarea></label><p class="hint">이 버튼은 ChatGPT에 요청할 문구를 준비합니다. 웹사이트가 AI를 직접 호출하지는 않습니다.</p></section>
-<section class="card"><h2>4. 정리본 확인·직접 저장</h2><ul id="noteList" class="compact-list"></ul><button type="button" id="noteNew" class="ghost small">새 정리본 작성</button><form id="note-form"><label class="field">정리본 제목<input id="noteTitle" required maxlength="300"></label><label class="field">본문<textarea id="noteBody" rows="7" required placeholder="ChatGPT 결과를 붙여넣거나 직접 작성하세요."></textarea></label><button class="primary" id="noteSave" type="submit">새 정리본 저장</button></form></section>
-</div></main></div><script type="module" src="connected.js"></script></body></html>
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>에쁠가속기 | A+ Accelerator</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="connected.css">
+</head>
+<body>
+  <div class="connected-shell workspace-shell">
+    <aside class="workspace-sidebar" aria-label="에쁠가속기 메뉴">
+      <div class="workspace-brand">
+        <div class="brand-mark" aria-hidden="true">A<span>+</span></div>
+        <div><strong>에쁠가속기</strong><small>A+ ACCELERATOR</small></div>
+      </div>
+      <p class="nav-caption">WORKSPACE</p>
+      <nav class="workspace-nav" aria-label="주요 기능">
+        <button type="button" class="workspace-nav-item active" data-page-target="courses" aria-controls="page-courses" aria-current="page"><span class="nav-icon" aria-hidden="true">▦</span><span>강의</span></button>
+        <button type="button" class="workspace-nav-item" data-page-target="sources" aria-controls="page-sources"><span class="nav-icon" aria-hidden="true">▤</span><span>자료</span></button>
+        <button type="button" class="workspace-nav-item" data-page-target="gpt" aria-controls="page-gpt"><span class="nav-icon" aria-hidden="true">✦</span><span>GPT 작업</span></button>
+        <button type="button" class="workspace-nav-item" data-page-target="notes" aria-controls="page-notes"><span class="nav-icon" aria-hidden="true">▥</span><span>정리본</span></button>
+      </nav>
+      <div class="sidebar-status">
+        <span class="status-dot" aria-hidden="true"></span>
+        <div><span id="accountName" class="account-name"></span><small id="sidebarStatus">비공개 작업 공간</small></div>
+      </div>
+    </aside>
+
+    <div class="workspace-frame">
+      <header class="workspace-topbar">
+        <div class="mobile-brand" aria-hidden="true"><div class="brand-mark">A<span>+</span></div></div>
+        <div class="lecture-summary">
+          <span>현재 강의</span>
+          <p id="lectureContext" class="lecture-context">강의를 선택하세요.</p>
+        </div>
+        <div class="topbar-status"><span class="tag" id="status" role="status">서버 연결 확인 중</span></div>
+      </header>
+
+      <main class="connected-main workspace-main">
+        <div class="global-messages">
+          <p id="readOnlyNotice" class="notice" hidden>첫 로그인 검증을 위해 자료 등록·수정이 잠겨 있습니다. 검증이 끝난 후 자료를 저장할 수 있습니다.</p>
+          <div role="alert" id="error" class="notice error-notice" hidden></div>
+        </div>
+        <p id="pageAnnouncement" class="sr-only" aria-live="polite"></p>
+
+        <section id="page-courses" class="workspace-page" data-page-panel="courses" aria-labelledby="courses-title">
+          <div class="page-head compact-page-head">
+            <div><div class="eyebrow">LECTURES</div><h1 id="courses-title">강의 관리</h1><p class="sub">과목 정보와 학년도·교수·분반을 분리해 관리하세요.</p></div>
+          </div>
+          <div class="page-grid course-layout">
+            <section class="card workspace-card">
+              <div class="card-heading"><div><span class="step-number">01</span><h2>과목</h2></div><p>과목 공통 특성</p></div>
+              <label class="field">과목 선택<select id="course"></select></label>
+              <form id="course-form" class="panel-form">
+                <label class="field">새 과목<input id="courseName" placeholder="예: 촉매반응공학" required maxlength="150"></label>
+                <label class="field">과목 특성<textarea id="characteristics" rows="3" placeholder="수식·계산 중심" maxlength="1000"></textarea></label>
+                <button class="primary action-button" type="submit">과목 추가</button>
+              </form>
+            </section>
+
+            <section class="card workspace-card">
+              <div class="card-heading"><div><span class="step-number">02</span><h2>학년도별 강의</h2></div><p>교수·분반 구분</p></div>
+              <label class="field">강의 선택<select id="offering"></select></label>
+              <form id="offering-form" class="panel-form field-grid">
+                <label class="field">연도<input id="year" type="number" min="1990" max="2100" value="2026" required></label>
+                <label class="field">학기<select id="term"><option>1</option><option selected>2</option><option>여름</option><option>겨울</option></select></label>
+                <label class="field">교수<input id="professor" maxlength="100" placeholder="담당 교수"></label>
+                <label class="field">분반<input id="section" maxlength="50" placeholder="예: 01"></label>
+                <button class="primary action-button field-wide" type="submit">강의 추가</button>
+              </form>
+            </section>
+
+            <section class="card workspace-card page-wide">
+              <div class="card-heading"><div><span class="step-number">03</span><h2>교수·시험 특성</h2></div><p>근거와 신뢰도 함께 기록</p></div>
+              <ul id="factsList" class="compact-list"></ul>
+              <form id="fact-form" class="panel-form fact-grid">
+                <label class="field">특성 종류<select id="factKey"><option value="exam_type">시험 유형</option><option value="emphasis">교수 강조 내용</option><option value="study_style">정리·학습 스타일</option><option value="exam_scope">시험 범위</option><option value="other">기타 특징</option></select></label>
+                <label class="field fact-value">내용<input id="factValue" required maxlength="2000" placeholder="예: 수식 유도 과정 중시"></label>
+                <label class="field">근거<input id="factProvenance" maxlength="400" placeholder="예: 2025 기출 2번"></label>
+                <label class="field">신뢰도<select id="factConfidence"><option value="unknown">미확인</option><option value="official">공식</option><option value="observed">기출로 확인</option><option value="reported">수강 후기</option><option value="inferred">추정</option></select></label>
+                <button class="primary action-button" type="submit">특성 기록 추가</button>
+              </form>
+            </section>
+          </div>
+        </section>
+
+        <section id="page-sources" class="workspace-page" data-page-panel="sources" aria-labelledby="sources-title" hidden>
+          <div class="page-head compact-page-head">
+            <div><div class="eyebrow">MATERIALS</div><h1 id="sources-title">강의자료</h1><p class="sub">전사본과 PDF를 등록하고 선택한 강의 안에서 검색하세요.</p></div>
+          </div>
+          <div class="page-grid source-layout">
+            <section class="card workspace-card">
+              <div class="card-heading"><div><span class="step-number">01</span><h2>자료 등록</h2></div><p>TXT·MD·PDF</p></div>
+              <form id="source-form" class="panel-form">
+                <label class="field">자료 종류<select id="sourceType"><option value="transcript">강의 전사본</option><option value="lecture_slides">강의 슬라이드</option><option value="past_exam">과거 기출</option><option value="textbook">교재</option><option value="syllabus">강의계획서</option></select></label>
+                <label class="field">자료 제목<input id="sourceTitle" required maxlength="200" placeholder="예: 5주차 강의 전사본"></label>
+                <label class="field">전사본 입력<textarea id="transcript" rows="6" placeholder="녹음 파일이 아닌 전사된 텍스트를 붙여넣으세요."></textarea></label>
+                <label class="field file-field">TXT·MD·PDF 파일<input id="sourceFile" type="file" accept=".txt,.md,.pdf"></label>
+                <label class="field">출처·참고 연도<input id="provenance" maxlength="400" placeholder="2025 기출, 수업 자료 등"></label>
+                <button class="primary action-button" type="submit">자료 저장</button>
+              </form>
+              <p class="hint">TXT·MD는 즉시 검색에 반영됩니다. PDF는 원본 저장 후 ‘추출 대기’로 표시됩니다.</p>
+            </section>
+
+            <section class="card workspace-card library-card">
+              <div class="card-heading"><div><span class="step-number">02</span><h2>등록 자료</h2></div><p>현재 강의 기준</p></div>
+              <ul id="sourceList" class="compact-list"></ul>
+              <div class="search-panel">
+                <h3>강의자료 검색</h3>
+                <form id="search-form" class="search-form">
+                  <label class="field"><span class="sr-only">선택한 강의에서 검색</span><input id="searchQuery" required maxlength="180" placeholder="예: 유효계수"></label>
+                  <button class="ghost" type="submit">검색</button>
+                </form>
+                <ul id="searchResults" class="compact-list search-results"></ul>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section id="page-gpt" class="workspace-page" data-page-panel="gpt" aria-labelledby="gpt-title" hidden>
+          <div class="page-head compact-page-head">
+            <div><div class="eyebrow">GPT WORKSPACE</div><h1 id="gpt-title">GPT 작업</h1><p class="sub">사이트의 강의 맥락을 담은 요청문을 준비해 ChatGPT에서 실행하세요.</p></div>
+          </div>
+          <div class="page-grid gpt-layout">
+            <section class="card workspace-card">
+              <div class="card-heading"><div><span class="step-number">01</span><h2>작업 설정</h2></div><p>AI는 ChatGPT에서 실행</p></div>
+              <label class="field">제작 모드<select id="mode"><option value="detailed_note">상세 정리본</option><option value="outline">목차·단원 매핑</option><option value="subnote">서브노트</option><option value="exam_paper">시험형 문제집</option><option value="exam_cram">시험 직전 압축</option><option value="exam_trends">기출 경향 분석</option><option value="transcript_fix">전사본 교정</option><option value="errors">오답노트</option><option value="calculator">CASIO 코드 설계</option></select></label>
+              <label class="field">범위<input id="scope" value="5주차" maxlength="200"></label>
+              <button class="primary action-button" id="copyPrompt" type="button">GPT 작업 요청문 복사</button>
+              <p class="hint">웹사이트는 별도 모델 API를 호출하지 않습니다. 요청문을 복사해 ChatGPT에서 사용하세요.</p>
+            </section>
+
+            <section class="card workspace-card prompt-card">
+              <div class="card-heading"><div><span class="step-number">02</span><h2>요청문 미리보기</h2></div><p>현재 강의 우선</p></div>
+              <label class="field prompt-field"><span class="sr-only">요청문 미리보기</span><textarea id="prompt" rows="18" readonly></textarea></label>
+            </section>
+          </div>
+        </section>
+
+        <section id="page-notes" class="workspace-page" data-page-panel="notes" aria-labelledby="notes-title" hidden>
+          <div class="page-head compact-page-head">
+            <div><div class="eyebrow">STUDY NOTES</div><h1 id="notes-title">정리본</h1><p class="sub">저장된 정리본을 선택하고 충돌 없이 수정·저장하세요.</p></div>
+          </div>
+          <div class="page-grid notes-layout">
+            <section class="card workspace-card note-list-card">
+              <div class="card-heading"><div><span class="step-number">01</span><h2>정리본 목록</h2></div><button type="button" id="noteNew" class="ghost small">새 정리본</button></div>
+              <ul id="noteList" class="compact-list"></ul>
+            </section>
+            <section class="card workspace-card note-editor-card">
+              <div class="card-heading"><div><span class="step-number">02</span><h2>편집</h2></div><p>Markdown 원문 보존</p></div>
+              <form id="note-form" class="panel-form">
+                <label class="field">정리본 제목<input id="noteTitle" required maxlength="300"></label>
+                <label class="field">본문<textarea id="noteBody" rows="15" required placeholder="ChatGPT 결과를 붙여넣거나 직접 작성하세요."></textarea></label>
+                <button class="primary action-button" id="noteSave" type="submit">새 정리본 저장</button>
+              </form>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <nav class="mobile-nav" aria-label="모바일 주요 기능">
+      <button type="button" class="mobile-nav-item active" data-page-target="courses" aria-controls="page-courses" aria-current="page"><span aria-hidden="true">▦</span><small>강의</small></button>
+      <button type="button" class="mobile-nav-item" data-page-target="sources" aria-controls="page-sources"><span aria-hidden="true">▤</span><small>자료</small></button>
+      <button type="button" class="mobile-nav-item" data-page-target="gpt" aria-controls="page-gpt"><span aria-hidden="true">✦</span><small>GPT</small></button>
+      <button type="button" class="mobile-nav-item" data-page-target="notes" aria-controls="page-notes"><span aria-hidden="true">▥</span><small>정리본</small></button>
+    </nav>
+  </div>
+  <script type="module" src="connected.js"></script>
+</body>
+</html>

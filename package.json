@@ -1,6 +1,6 @@
 {
   "name": "aplus-accelerator-v2",
-  "version": "0.7.0-preview.1",
+  "version": "0.7.0-preview.2",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
