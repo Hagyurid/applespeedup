@@ -39,7 +39,7 @@ const opt=(select,items,label)=>{select.replaceChildren();for(const x of items)s
 const empty=text=>{const li=document.createElement('li');li.textContent=text;return li;};
 const types={transcript:'전사본',lecture_slides:'강의자료',past_exam:'기출·시험자료',textbook:'교재·참고자료',exam_trend:'기출 경향',syllabus:'강의계획서',other:'기타'};
 async function createPagePreview(file){
-  if(!/image\\/(png|jpeg)/.test(file.type))return null;
+  if(!['image/png','image/jpeg'].includes(file.type))return null;
   const url=URL.createObjectURL(file),image=new Image();
   try{
     image.src=url;
@@ -156,7 +156,7 @@ $('source-form').onsubmit=e=>{e.preventDefault();run(async()=>{
   if(file){if(file.size>8*1024*1024)throw Error('최대 8 MiB까지 등록할 수 있습니다.');
     const headers={'Content-Type':'application/octet-stream','X-Offering-Id':o.id,'X-Source-Type':type,'X-Source-Title':encodeURIComponent(name),'X-Source-Provenance':encodeURIComponent(provenance),'X-File-Name':encodeURIComponent(file.name),'X-Source-Weeks':JSON.stringify(weeks),...(exam_year!==null?{'X-Exam-Year':String(exam_year)}:{})};
     r=await call('/api/assets',{method:'POST',headers,body:file});
-    if(/image\\/(png|jpeg)/.test(file.type)){
+    if(['image/png','image/jpeg'].includes(file.type)){
       const preview=await createPagePreview(file);
       if(preview){
         const imageResult=await call('/api/ai/source-page-image',{method:'POST',
