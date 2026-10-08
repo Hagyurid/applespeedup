@@ -5,6 +5,7 @@
 
 import {splitTranscript} from '../domain/core.mjs';
 import {contentHash} from './content.mjs';
+import {normalizeSourceMetadata} from '../domain/source-metadata.mjs';
 const fail=(code)=>{const e=new Error(code);e.code=code;throw e;};
 const writeRoles=new Set(['owner','editor']);
 const trim=(value,limit)=>String(value??'').trim().slice(0,limit);
@@ -84,22 +85,35 @@ export function createD1Repository(db){
       if(!sha256)return null;
       return first('SELECT id AS source_id,extract_status FROM source_assets WHERE offering_id=? AND source_type=? AND sha256=?',offering_id,source_type,sha256);
     },
-    async registerUploadedAsset(userId,{id,offering_id,source_type,title,file_name='',mime_type='text/plain',storage_key=null,sha256,provenance='',text=null}){
+    async updateExistingAssetMetadata(userId,{source_id,offering_id,source_type,title,weeks=[],exam_year=null,provenance=''}) {
+      await authorizeOffering(userId,offering_id,true);
+      const meta=normalizeSourceMetadata({source_type,weeks,exam_year});
+      const row=await first('SELECT id,extract_status,source_type FROM source_assets WHERE id=? AND offering_id=?',source_id,offering_id);
+      if(!row)fail('NOT_FOUND');
+      if(row.source_type!==source_type)fail('BAD_REQUEST');
+      const t=trim(title,200);
+      if(!t||String(title).trim().length>200)fail('BAD_REQUEST');
+      await q('UPDATE source_assets SET title=?,weeks_json=?,year_reference=?,provenance=? WHERE id=? AND offering_id=?',
+        t,JSON.stringify(meta.weeks),meta.exam_year,trim(provenance,400),source_id,offering_id).run();
+      return {source_id,extract_status:row.extract_status,reused:true,metadata_updated:true};
+    },
+    async registerUploadedAsset(userId,{id,offering_id,source_type,title,file_name='',mime_type='text/plain',storage_key=null,sha256,provenance='',text=null,weeks=[],exam_year=null}){
       await authorizeOffering(userId,offering_id,true);
       const type=String(source_type),t=String(title||'').trim();
-      if(!id||!t||(!storage_key&&text===null)||!['lecture_slides','transcript','textbook','past_exam','exam_trend','syllabus','other'].includes(type))fail('BAD_REQUEST');
+      if(!id||!t||t.length>200||(!storage_key&&text===null)||!['lecture_slides','transcript','textbook','past_exam','exam_trend','syllabus','other'].includes(type))fail('BAD_REQUEST');
+      const meta=normalizeSourceMetadata({source_type:type,weeks,exam_year});
       let chunks=[];
       if(typeof text==='string'){
         if(!text.trim()||text.length>1500000)fail('BAD_REQUEST');
         chunks=splitTranscript(text,1600);
       }
       const state=text===null?'pending':'ready';
-      const st=[q(`INSERT INTO source_assets(id,offering_id,source_type,title,file_name,mime_type,storage_key,sha256,extract_status,provenance)
-        VALUES(?,?,?,?,?,?,?,?,?,?)`,id,offering_id,type,t,file_name,mime_type,storage_key,sha256,state,provenance)];
+      const st=[q(`INSERT INTO source_assets(id,offering_id,source_type,title,file_name,mime_type,storage_key,sha256,extract_status,provenance,year_reference,weeks_json)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,id,offering_id,type,t,file_name,mime_type,storage_key,sha256,state,provenance,meta.exam_year,JSON.stringify(meta.weeks))];
       for(let i=0;i<chunks.length;i++)st.push(q('INSERT INTO source_chunks(id,source_id,page_num,chunk_index,text_content) VALUES(?,?,NULL,?,?)',uuid(),id,i,chunks[i]));
       try{await db.batch(st);}catch(e){
         const duplicate=await this.findDuplicateAsset(userId,{offering_id,source_type:type,sha256});
-        if(duplicate)return {...duplicate,reused:true};
+        if(duplicate)return this.updateExistingAssetMetadata(userId,{source_id:duplicate.source_id,offering_id,source_type:type,title:t,provenance,weeks:meta.weeks,exam_year:meta.exam_year});
         throw e;
       }
       return {source_id:id,extract_status:state,chunks:chunks.length};
@@ -126,9 +140,10 @@ export function createD1Repository(db){
     },
     async listSources(userId,{offering_id}){
       await authorizeOffering(userId,offering_id);
-      return all(`SELECT id,offering_id,source_type,title,file_name,mime_type,extract_status,
-        provenance,year_reference,created_at FROM source_assets WHERE offering_id=?
+      const rows=await all(`SELECT id,offering_id,source_type,title,file_name,mime_type,extract_status,
+        provenance,year_reference AS exam_year,weeks_json,created_at FROM source_assets WHERE offering_id=?
         ORDER BY created_at DESC,id DESC LIMIT 300`,offering_id);
+      return rows.map(({weeks_json,...item})=>({...item,weeks:JSON.parse(weeks_json||'[]')}));
     },
     async searchSourceContent(userId,{offering_id,query,limit=8}){
       await authorizeOffering(userId,offering_id);
@@ -229,15 +244,16 @@ export function createD1Repository(db){
       return {job_id:job.id,offering_id:job.offering_id,mode:job.mode,scope:job.scope,
         status:job.status,completed_steps:JSON.parse(job.completed_steps_json||'[]')};
     },
-    async ingestTranscript(userId,{offering_id,title,text,provenance=''}){
+    async ingestTranscript(userId,{offering_id,title,text,provenance='',weeks=[],exam_year=null}){
       await authorizeOffering(userId,offering_id,true);
       const value=String(text??''),t=trim(title,200);
-      if(!t || !value.trim() || value.length>1500000)fail('BAD_REQUEST');
+      if(!t || String(title).trim().length>200 || !value.trim() || value.length>1500000)fail('BAD_REQUEST');
+      const meta=normalizeSourceMetadata({source_type:'transcript',weeks,exam_year});
       const sha256=await contentHash(new TextEncoder().encode(value));
       const duplicate=await this.findDuplicateAsset(userId,{offering_id,source_type:'transcript',sha256});
-      if(duplicate)return {...duplicate,reused:true};
+      if(duplicate)return this.updateExistingAssetMetadata(userId,{source_id:duplicate.source_id,offering_id,source_type:'transcript',title:t,provenance,weeks:meta.weeks,exam_year:meta.exam_year});
       return this.registerUploadedAsset(userId,{id:uuid(),offering_id,source_type:'transcript',title:t,
-        sha256,provenance:trim(provenance,400),text:value});
+        sha256,provenance:trim(provenance,400),text:value,weeks:meta.weeks,exam_year:meta.exam_year});
     },
     async getSourceContent(userId,{source_id,page_num,offset=0,limit=10}){
       await authorizeSource(userId,source_id);

@@ -31,7 +31,7 @@ export const assets = sqliteTable('source_assets', {
   type: text('source_type').notNull(), title: text('title').notNull(), filename: text('file_name').notNull().default(''),
   mime: text('mime_type').notNull().default(''), storageKey: text('storage_key'), sha256: text('sha256'),
   extractStatus: text('extract_status').notNull().default('pending'), provenance: text('provenance').notNull().default(''),
-  yearReference: integer('year_reference'), createdAt: timestamp('created_at'),
+  yearReference: integer('year_reference'), weeksJson: text('weeks_json').notNull().default('[]'), createdAt: timestamp('created_at'),
 }, t => [index('idx_assets_offering_type').on(t.offeringId, t.type),
   uniqueIndex('uq_assets_content').on(t.offeringId, t.type, t.sha256),
   check('asset_extract_status', sql`${t.extractStatus} IN ('pending','ready','failed','unsupported')`)]);

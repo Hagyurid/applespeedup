@@ -37,20 +37,39 @@ async function call(path,options={}){
 const json=data=>({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
 const opt=(select,items,label)=>{select.replaceChildren();for(const x of items)select.add(new Option(label(x),x.id));};
 const empty=text=>{const li=document.createElement('li');li.textContent=text;return li;};
-const types={transcript:'강의 전사본',lecture_slides:'강의 슬라이드',past_exam:'과거 기출',textbook:'교재',exam_trend:'기출 경향',syllabus:'강의계획서',other:'기타'};
+const types={transcript:'전사본',lecture_slides:'강의자료',past_exam:'기출·시험자료',textbook:'교재·참고자료',exam_trend:'기출 경향',syllabus:'강의계획서',other:'기타'};
+const sourceWeeks=()=>[...document.querySelectorAll('#weeksGrid input:checked')].map(el=>Number(el.value));
+const updateWeeksSummary=()=>{$('weeksSummary').textContent=sourceWeeks().length?`선택: ${sourceWeeks().join(', ')}주차`:'주차 미지정 · 선택해서 변경';};
+function syncSourceMetadataFields(){
+  const exam=$('sourceType').value==='past_exam';
+  $('weeksField').hidden=exam;
+  $('examYearField').hidden=!exam;
+  if(!exam)$('examYear').value='';
+  updateWeeksSummary();
+}
+for(let w=1;w<=30;w++){
+  const lab=document.createElement('label'),ck=document.createElement('input');
+  lab.className='week-option';ck.type='checkbox';ck.value=String(w);
+  ck.addEventListener('change',updateWeeksSummary);
+  lab.append(ck,document.createTextNode(`${w}주차`));$('weeksGrid').append(lab);
+}
+$('sourceType').addEventListener('change',syncSourceMetadataFields);
+syncSourceMetadataFields();
 function rememberDraft(){if(state.activeOffering)state.drafts.set(state.activeOffering,{title:$('noteTitle').value,body:$('noteBody').value,editing:state.editingNote,request:state.noteRequest,
-  source:{title:$('sourceTitle').value,text:$('transcript').value,type:$('sourceType').value,provenance:$('provenance').value,file:$('sourceFile').files[0]}});}
+  source:{title:$('sourceTitle').value,text:$('transcript').value,type:$('sourceType').value,provenance:$('provenance').value,file:$('sourceFile').files[0],weeks:sourceWeeks(),examYear:$('examYear').value}});}
 function restoreDraft(id){const d=state.drafts.get(id);$('noteTitle').value=d?.title||'';$('noteBody').value=d?.body||'';state.editingNote=d?.editing||null;state.noteRequest=d?.request||null;
   $('source-form').reset();if(d?.source){$('sourceTitle').value=d.source.title;$('transcript').value=d.source.text;$('sourceType').value=d.source.type;$('provenance').value=d.source.provenance;
-    if(d.source.file&&typeof DataTransfer!=='undefined'){const files=new DataTransfer();files.items.add(d.source.file);$('sourceFile').files=files.files;}}
-  renderNoteSave();}
+    if(d.source.file&&typeof DataTransfer!=='undefined'){const files=new DataTransfer();files.items.add(d.source.file);$('sourceFile').files=files.files;}
+    $('examYear').value=d.source.examYear||'';for(const el of $('weeksGrid').querySelectorAll('input'))el.checked=(d.source.weeks||[]).includes(Number(el.value));}
+  syncSourceMetadataFields();renderNoteSave();}
 function renderNoteSave(){$('noteSave').textContent=state.editingNote?`정리본 수정 저장 · v${state.editingNote.revision}`:'새 정리본 저장';}
 function renderSources(){
   const node=$('sourceList');node.replaceChildren();
   if(!state.sources.length){node.append(empty('선택한 강의에 등록된 자료가 없습니다.'));return;}
   for(const src of state.sources){
     const li=document.createElement('li'),text=document.createElement('span');
-    text.textContent=`${src.title} · ${types[src.source_type]||src.source_type} · ${src.extract_status==='ready'?'검색 가능':src.extract_status==='failed'?'추출 실패':'원문 추출 대기'}`;li.append(text);
+    const loc=src.source_type==='past_exam'?(src.exam_year?`${src.exam_year}년`:'연도 미지정'):(src.weeks?.length?`${src.weeks.join(', ')}주차`:'주차 미지정');
+    text.textContent=`${src.title} · ${types[src.source_type]||src.source_type} · ${loc} · ${src.extract_status==='ready'?'검색 가능':src.extract_status==='failed'?'추출 실패':'원문 추출 대기'}`;li.append(text);
     if(src.file_name){const b=document.createElement('button');b.type='button';b.className='ghost small';b.textContent='원본 다운로드';b.onclick=()=>{const a=document.createElement('a');a.href=`/api/files/${encodeURIComponent(src.id)}`;a.click();};li.append(b);}
     node.append(li);
   }
@@ -108,13 +127,16 @@ $('mode').onchange=refreshPrompt;$('scope').oninput=refreshPrompt;
 $('course-form').onsubmit=e=>{e.preventDefault();run(async()=>{const r=await call('/api/courses',json({name:$('courseName').value,characteristics:$('characteristics').value}));$('course-form').reset();await refreshCourses(r.id);});};
 $('source-form').onsubmit=e=>{e.preventDefault();run(async()=>{
   const o=offering();if(!o)throw Error('과목을 먼저 등록하세요.');
-  const file=$('sourceFile').files[0],name=$('sourceTitle').value,provenance=$('provenance').value,type=$('sourceType').value;let r;
+  const file=$('sourceFile').files[0],name=$('sourceTitle').value.trim(),provenance=$('provenance').value,type=$('sourceType').value;
+  if(!name)throw Error('등록할 자료 제목을 직접 입력하세요.');
+  const weeks=type==='past_exam'?[]:sourceWeeks();
+  const exam_year=type==='past_exam'&&$('examYear').value!==''?Number($('examYear').value):null;let r;
   if(file){if(file.size>8*1024*1024)throw Error('최대 8 MiB까지 등록할 수 있습니다.');
-    const headers={'Content-Type':'application/octet-stream','X-Offering-Id':o.id,'X-Source-Type':type,'X-Source-Title':encodeURIComponent(name),'X-Source-Provenance':encodeURIComponent(provenance),'X-File-Name':encodeURIComponent(file.name)};
+    const headers={'Content-Type':'application/octet-stream','X-Offering-Id':o.id,'X-Source-Type':type,'X-Source-Title':encodeURIComponent(name),'X-Source-Provenance':encodeURIComponent(provenance),'X-File-Name':encodeURIComponent(file.name),'X-Source-Weeks':JSON.stringify(weeks),...(exam_year!==null?{'X-Exam-Year':String(exam_year)}:{})};
     r=await call('/api/assets',{method:'POST',headers,body:file});
   }else{if(type!=='transcript')throw Error('전사본 직접 입력 외에는 원본 파일을 선택하세요.');
-    r=await call('/api/transcripts',json({offering_id:o.id,title:name,text:$('transcript').value,provenance}));}
-  $('source-form').reset();await refreshOfferingData();if(r.reused)fail('같은 강의에 동일한 내용이 등록되어 있어 기존 자료를 사용합니다.');
+    r=await call('/api/transcripts',json({offering_id:o.id,title:name,text:$('transcript').value,provenance,weeks,exam_year}));}
+  $('source-form').reset();for(const el of $('weeksGrid').querySelectorAll('input'))el.checked=false;syncSourceMetadataFields();await refreshOfferingData();if(r.metadata_updated)fail('동일 파일이 있어 기존 자료의 제목·주차/연도 정보를 입력한 값으로 갱신했습니다.');else if(r.reused)fail('동일 내용의 기존 자료를 재사용했습니다.');
 });};
 $('search-form').onsubmit=e=>{e.preventDefault();run(async()=>{
   const o=offering();if(!o)throw Error('과목을 먼저 선택하세요.');

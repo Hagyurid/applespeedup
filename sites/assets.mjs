@@ -1,5 +1,6 @@
 /** Authenticated R2 asset storage; the public web server must NEVER expose bucket keys. */
 import {contentHash} from './content.mjs';
+import {normalizeSourceMetadata} from '../domain/source-metadata.mjs';
 const accepted = Object.freeze({
   '.txt': { mime: 'text/plain', ready: true },
   '.md': { mime: 'text/markdown', ready: true },
@@ -10,7 +11,7 @@ const accepted = Object.freeze({
 const MAX_BYTES = 8 * 1024 * 1024;
 function error(code){const e=new Error(code);e.code=code;throw e;}
 function mimeFor(name){const ext=String(name).toLowerCase().match(/\.[a-z0-9]+$/)?.[0];return ext ? accepted[ext] : undefined;}
-export async function storeAsset({bucket,repository,userId,offeringId,file,sourceType,title,provenance=''}){
+export async function storeAsset({bucket,repository,userId,offeringId,file,sourceType,title,provenance='',weeks=[],exam_year=null}){
   if(!bucket?.put||!bucket?.get||!bucket?.delete)error('STORAGE_NOT_CONFIGURED');
   // Authorization always happens BEFORE the byte stream is stored in R2.
   await repository.assertOfferingAccess(userId,offeringId,true);
@@ -19,6 +20,7 @@ export async function storeAsset({bucket,repository,userId,offeringId,file,sourc
   if(!info||!file||file.size<1||file.size>MAX_BYTES)error('BAD_FILE');
   const acceptedType=['lecture_slides','transcript','textbook','past_exam','exam_trend','syllabus','other'];
   if(!acceptedType.includes(sourceType))error('BAD_REQUEST');
+  const meta=normalizeSourceMetadata({source_type:sourceType,weeks,exam_year});
   const nameLabel=String(title||'').trim();
   if(!nameLabel||nameLabel.length>200)error('BAD_REQUEST');
   const bytes=new Uint8Array(await file.arrayBuffer());
@@ -37,13 +39,16 @@ export async function storeAsset({bucket,repository,userId,offeringId,file,sourc
     if(!text.trim()||text.length>1500000)error('BAD_FILE');
   }
   const duplicate=await repository.findDuplicateAsset(userId,{offering_id:offeringId,source_type:sourceType,sha256:digest});
-  if(duplicate)return {...duplicate,sha256:digest,reused:true};
+  if(duplicate){
+    const saved=await repository.updateExistingAssetMetadata(userId,{source_id:duplicate.source_id,offering_id:offeringId,source_type:sourceType,title:nameLabel,provenance,weeks:meta.weeks,exam_year:meta.exam_year});
+    return {...saved,sha256:digest};
+  }
   await bucket.put(key,bytes,{httpMetadata:{contentType:info.mime}});
   try{
     const result=await repository.registerUploadedAsset(userId,{
       id:sourceId,offering_id:offeringId,source_type:sourceType,title:nameLabel,
       file_name:name.slice(0,200),mime_type:info.mime,storage_key:key,sha256:digest,
-      provenance:String(provenance).slice(0,400),text
+      provenance:String(provenance).slice(0,400),weeks:meta.weeks,exam_year:meta.exam_year,text
     });
     if(result.source_id!==sourceId)await bucket.delete(key);
     return {...result,sha256:digest};

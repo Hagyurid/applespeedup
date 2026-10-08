@@ -8,6 +8,13 @@
       "when": 1791467821073,
       "tag": "0000_talented_pixie",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1791502400000,
+      "tag": "0001_source_weeks",
+      "breakpoints": true
     }
   ]
 }

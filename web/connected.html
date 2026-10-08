@@ -71,14 +71,22 @@
             <section class="card workspace-card">
               <div class="card-heading"><div><span class="step-number">01</span><h2>자료 등록</h2></div><p>TXT·MD·PDF</p></div>
               <form id="source-form" class="panel-form">
-                <label class="field">자료 종류<select id="sourceType"><option value="transcript">강의 전사본</option><option value="lecture_slides">강의 슬라이드</option><option value="past_exam">과거 기출</option><option value="textbook">교재</option><option value="syllabus">강의계획서</option></select></label>
-                <label class="field">자료 제목<input id="sourceTitle" required maxlength="200" placeholder="예: 5주차 강의 전사본"></label>
+                <label class="field">자료 유형<select id="sourceType"><option value="lecture_slides">강의자료</option><option value="transcript">전사본</option><option value="textbook">교재·참고자료</option><option value="past_exam">기출·시험자료</option><option value="other">기타</option></select></label>
+                <label class="field">등록할 자료 제목 (직접 입력)<input id="sourceTitle" required maxlength="200" autocomplete="off" placeholder="예: 촉매반응공학 기말고사"></label>
+                <p class="hint">원본 파일명은 다운로드용으로만 보관합니다. 저장되는 제목과 자료 유형은 입력한 값이 기준입니다.</p>
+                <div id="weeksField" class="field">
+                  <label>주차 (선택, 여러 주차 가능)</label>
+                  <details class="week-details"><summary id="weeksSummary">주차 미지정 · 선택해서 변경</summary>
+                    <div id="weeksGrid" class="week-grid"></div>
+                  </details>
+                </div>
+                <label class="field" id="examYearField" hidden>기출 연도 (선택)<input id="examYear" type="number" min="1900" max="2100" placeholder="예: 2024"></label>
                 <label class="field">전사본 입력<textarea id="transcript" rows="6" placeholder="녹음 파일이 아닌 전사된 텍스트를 붙여넣으세요."></textarea></label>
-                <label class="field file-field">TXT·MD·PDF 파일<input id="sourceFile" type="file" accept=".txt,.md,.pdf"></label>
+                <label class="field file-field">원본 파일 (TXT·MD·PDF·DOCX·PPTX)<input id="sourceFile" type="file" accept=".txt,.md,.pdf,.docx,.pptx"></label>
                 <label class="field">출처·참고 연도<input id="provenance" maxlength="400" placeholder="2025 기출, 수업 자료 등"></label>
                 <button class="primary action-button" type="submit">자료 저장</button>
               </form>
-              <p class="hint">TXT·MD는 즉시 검색에 반영됩니다. PDF는 원본 저장 후 ‘추출 대기’로 표시됩니다.</p>
+              <p class="hint">TXT·MD는 등록 즉시 검색할 수 있습니다. PDF·DOCX·PPTX는 원본만 보관하며, OCR/텍스트 추출 기능이 연결되기 전까지는 '추출 대기'로 표시됩니다.</p>
             </section>
 
             <section class="card workspace-card library-card">

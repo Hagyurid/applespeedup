@@ -150,3 +150,11 @@ body{background:#f6f7f9}
 }
 
 @media(prefers-reduced-motion:reduce){.workspace-page{animation:none}}
+
+/* Source metadata: weeks are optional, exam-year is exclusive to past_exam. */
+.connected-main .week-details{border:1px solid #dde1e8;border-radius:10px;background:#fff;overflow:hidden}
+.connected-main .week-details summary{padding:11px 12px;cursor:pointer;font-size:.87rem;color:#505765}
+.connected-main .week-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(68px,1fr));gap:8px;padding:12px;max-height:180px;overflow-y:auto;border-top:1px solid #e9ebef}
+.connected-main .week-option{display:flex;align-items:center;gap:5px;font-size:.75rem;background:#f8f9fb;padding:8px 6px;border-radius:8px;cursor:pointer}
+.connected-main .week-option input{width:auto;min-width:15px;margin:0;accent-color:#e3454e}
+.connected-main #weeksField[hidden],.connected-main #examYearField[hidden]{display:none!important}

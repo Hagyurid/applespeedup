@@ -67,9 +67,12 @@ export function createHttpHandler({db,bucket,authenticate,allowedOrigin}={}){
         const raw=await readBody(request,fileLimits.maxBytes);if(!raw)return fail(413,'Upload too large');
         const filename=decodeURIComponent(request.headers.get('x-file-name')||'');
         const file={name:filename,size:raw.byteLength,arrayBuffer:async()=>raw.buffer};
+        let weeks;try{weeks=JSON.parse(request.headers.get('x-source-weeks')||'[]');}catch{return fail(400,'Invalid source weeks');}
+        const rawYear=request.headers.get('x-exam-year');
+        const exam_year=rawYear===null||rawYear===''?null:Number(rawYear);
         const result=await storeAsset({bucket,repository:repo,userId,file,
           offeringId:request.headers.get('x-offering-id'),sourceType:request.headers.get('x-source-type'),
-          title:decodeURIComponent(request.headers.get('x-source-title')||''),provenance:decodeURIComponent(request.headers.get('x-source-provenance')||'')});
+          title:decodeURIComponent(request.headers.get('x-source-title')||''),provenance:decodeURIComponent(request.headers.get('x-source-provenance')||''),weeks,exam_year});
         return json(result,201);
       }
       if(method==='POST'&&['/api/courses','/api/offerings','/api/transcripts','/api/facts','/api/notes','/api/jobs','/api/checkpoints'].includes(url.pathname)){

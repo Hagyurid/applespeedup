@@ -200,3 +200,6 @@ CREATE TABLE `note_versions` (
 	FOREIGN KEY (`note_id`) REFERENCES `notes`(`id`) ON UPDATE no action ON DELETE cascade,
 	CONSTRAINT "note_refs_json" CHECK(json_valid("note_versions"."source_refs_json"))
 );
+
+-- User-authored optional week metadata for non-exam source assets.
+ALTER TABLE source_assets ADD COLUMN weeks_json TEXT NOT NULL DEFAULT '[]';
