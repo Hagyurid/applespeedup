@@ -1,0 +1,40 @@
+/** Transport-neutral JSON-RPC handler. It does NOT supply authentication or storage.
+ * Host must provide verified auth(request)->userId and authorized repository methods.
+ * With no auth/repo, fails CLOSED. MCP deployment in Sites must validate runtime integration.
+ */
+const tools = [
+ {name:'get_course_context',description:'Read course and academic offering profile, including provenance of facts.',inputSchema:{type:'object',properties:{offering_id:{type:'string'}},required:['offering_id'],additionalProperties:false},annotations:{readOnlyHint:true}},
+ {name:'list_sources',description:'List source metadata in one academic offering. Prior-year exam references are separate.',inputSchema:{type:'object',properties:{offering_id:{type:'string'}},required:['offering_id'],additionalProperties:false},annotations:{readOnlyHint:true}},
+ {name:'search_source_content',description:'Search accessible uploaded TEXT and transcript chunks, with source/page citations.',inputSchema:{type:'object',properties:{offering_id:{type:'string'},query:{type:'string'},limit:{type:'integer',minimum:1,maximum:10}},required:['offering_id','query'],additionalProperties:false},annotations:{readOnlyHint:true}},
+ {name:'get_source_content',description:'Read bounded text chunks from an authorized source. Supports pagination for long transcripts.',inputSchema:{type:'object',properties:{source_id:{type:'string'},page_num:{type:'integer',minimum:1},offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:20}},required:['source_id'],additionalProperties:false},annotations:{readOnlyHint:true}},
+ {name:'get_note',description:'Get a saved note and its revision.',inputSchema:{type:'object',properties:{note_id:{type:'string'}},required:['note_id'],additionalProperties:false},annotations:{readOnlyHint:true}},
+ {name:'save_note',description:'Create or update a note with optimistic revision check. Never overwrite on conflict.',inputSchema:{type:'object',properties:{offering_id:{type:'string'},note_id:{type:'string'},expected_revision:{type:'integer'},title:{type:'string'},content_markdown:{type:'string'}},required:['offering_id','title','content_markdown'],additionalProperties:false},annotations:{readOnlyHint:false,destructiveHint:false}},
+ {name:'create_job',description:'Create a persisted work item tied to the authenticated user and offering.',inputSchema:{type:'object',properties:{offering_id:{type:'string'},mode:{type:'string'},scope:{type:'string'}},required:['offering_id','mode'],additionalProperties:false},annotations:{readOnlyHint:false,destructiveHint:false}},
+ {name:'get_job',description:'Read an owned work item for resumable tasks.',inputSchema:{type:'object',properties:{job_id:{type:'string'}},required:['job_id'],additionalProperties:false},annotations:{readOnlyHint:true}},
+ {name:'save_checkpoint',description:'Persist a GPT job step checkpoint for later resume.',inputSchema:{type:'object',properties:{job_id:{type:'string'},step:{type:'string'},status:{type:'string'},result_ref:{type:'string'}},required:['job_id','step','status'],additionalProperties:false},annotations:{readOnlyHint:false,destructiveHint:false}},
+];
+const invoke={get_course_context:'getCourseContext',list_sources:'listSources',search_source_content:'searchSourceContent',get_source_content:'getSourceContent',get_note:'getNote',save_note:'saveNote',create_job:'createJob',get_job:'getJob',save_checkpoint:'saveCheckpoint'};
+function jsonrpc(id,result){return {jsonrpc:'2.0',id,result};}
+function error(id,code,message){return {jsonrpc:'2.0',id,error:{code,message}};}
+export async function handleMessage(body,{authenticate,repo}={}){
+ if(!body||body.jsonrpc!=='2.0'||typeof body.method!=='string')return error(body?.id??null,-32600,'Invalid Request');
+ if(body.method==='initialize')return jsonrpc(body.id,{protocolVersion:'2025-03-26',capabilities:{tools:{}},serverInfo:{name:'aplus-accelerator',version:'0.5.0'}});
+ if(body.method==='notifications/initialized')return null;
+ if(body.method==='ping')return jsonrpc(body.id,{});
+ // Prevent unauthenticated tools/list and calls, even if the site URL is public.
+ const userId=await authenticate?.();if(!userId)return error(body.id,-32001,'Authentication required');
+ if(body.method==='tools/list')return jsonrpc(body.id,{tools});
+ if(body.method!=='tools/call')return error(body.id,-32601,'Method not found');
+ const name=body.params?.name,args=body.params?.arguments||{};
+ const tool=tools.find(t=>t.name===name);if(!tool)return error(body.id,-32602,'Unknown tool');
+ for(const required of tool.inputSchema.required){if(args[required]===undefined||args[required]===null||args[required]==='')return error(body.id,-32602,`Missing ${required}`);}
+ if(Object.keys(args).some(k=>!(k in tool.inputSchema.properties)))return error(body.id,-32602,'Unexpected parameter');
+ for(const [key,val] of Object.entries(args)){const schema=tool.inputSchema.properties[key];if(schema.type==='string' && (typeof val!=='string'||val.length>500000))return error(body.id,-32602,`Invalid ${key}`);if(schema.type==='integer' && (!Number.isInteger(val)||(schema.minimum!==undefined&&val<schema.minimum)||(schema.maximum!==undefined&&val>schema.maximum)))return error(body.id,-32602,`Invalid ${key}`);}
+ if(!repo || typeof repo[invoke[name]]!=='function')return error(body.id,-32002,'Storage backend is not configured');
+ try{const result=await repo[invoke[name]](userId,args);return jsonrpc(body.id,{content:[{type:'text',text:JSON.stringify(result)}],isError:false});}
+ catch(err){ // Never leak SQL/path/secret internal errors.
+   const publicErr=err?.code==='FORBIDDEN'?'Not authorized':err?.code==='REVISION_CONFLICT'?'Revision conflict':err?.code==='NOT_FOUND'?'Not found':err?.code==='BAD_REQUEST'?'Invalid input':'Request failed';
+   return jsonrpc(body.id,{content:[{type:'text',text:publicErr}],isError:true});
+ }
+}
+export function toolSpecs(){return tools;}

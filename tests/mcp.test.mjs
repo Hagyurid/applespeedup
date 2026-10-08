@@ -1,0 +1,7 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {handleMessage,toolSpecs} from '../sites/mcp-core.mjs';
+const msg=(method,params,id=1)=>({jsonrpc:'2.0',id,method,params});
+test('MCP init and tools metadata',async()=>{const init=await handleMessage(msg('initialize',{}));assert.equal(init.result.serverInfo.name,'aplus-accelerator');assert.equal(toolSpecs().length,9);});
+test('Unauthenticated tool discovery denied',async()=>{const r=await handleMessage(msg('tools/list',{}));assert.equal(r.error.code,-32001);});
+test('Unknown/missing args rejected',async()=>{const c={authenticate:async()=> 'u1',repo:{}};assert.equal((await handleMessage(msg('tools/call',{name:'nope'}),c)).error.code,-32602);assert.equal((await handleMessage(msg('tools/call',{name:'get_note',arguments:{}}),c)).error.code,-32602);});
+test('Expected source list tool interaction',async()=>{const c={authenticate:async()=> 'u1',repo:{listSources:async(user,args)=>[{user,offering:args.offering_id}]}};const r=await handleMessage(msg('tools/call',{name:'list_sources',arguments:{offering_id:'off2026'}}),c);assert.equal(JSON.parse(r.result.content[0].text)[0].offering,'off2026');});
+test('Failed repository does not leak secrets',async()=>{const c={authenticate:async()=> 'u1',repo:{getNote:async()=>{throw Error('db_password=secret');}}};const r=await handleMessage(msg('tools/call',{name:'get_note',arguments:{note_id:'n1'}}),c);assert.equal(r.result.isError,true);assert.doesNotMatch(r.result.content[0].text,/secret/);});
