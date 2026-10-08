@@ -45,7 +45,7 @@ body{background:#f6f7f9}
 .connected-main .compact-page-head .sub{font-size:.84rem;margin-top:8px;line-height:1.55}
 
 .page-grid{display:grid;gap:18px;min-width:0}
-.course-layout{grid-template-columns:repeat(2,minmax(0,1fr))}
+.course-layout{grid-template-columns:minmax(0,720px)}
 .source-layout{grid-template-columns:minmax(320px,.86fr) minmax(420px,1.14fr)}
 .gpt-layout{grid-template-columns:minmax(300px,.78fr) minmax(420px,1.22fr)}
 .notes-layout{grid-template-columns:minmax(290px,.72fr) minmax(440px,1.28fr)}

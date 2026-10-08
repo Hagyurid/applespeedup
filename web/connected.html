@@ -46,41 +46,19 @@
 
         <section id="page-courses" class="workspace-page" data-page-panel="courses" aria-labelledby="courses-title">
           <div class="page-head compact-page-head">
-            <div><div class="eyebrow">LECTURES</div><h1 id="courses-title">강의 관리</h1><p class="sub">과목 정보와 학년도·교수·분반을 분리해 관리하세요.</p></div>
+            <div><div class="eyebrow">LECTURES</div><h1 id="courses-title">강의 관리</h1><p class="sub">과목을 등록하면 강의자료·GPT 작업·정리본에서 바로 사용할 수 있어요.</p></div>
           </div>
           <div class="page-grid course-layout">
             <section class="card workspace-card">
-              <div class="card-heading"><div><span class="step-number">01</span><h2>과목</h2></div><p>과목 공통 특성</p></div>
+              <div class="card-heading"><div><span class="step-number">01</span><h2>과목 정보 등록</h2></div></div>
               <label class="field">과목 선택<select id="course"></select></label>
+              <select id="offering" hidden aria-hidden="true" tabindex="-1"></select>
               <form id="course-form" class="panel-form">
                 <label class="field">새 과목<input id="courseName" placeholder="예: 촉매반응공학" required maxlength="150"></label>
-                <label class="field">과목 특성<textarea id="characteristics" rows="3" placeholder="수식·계산 중심" maxlength="1000"></textarea></label>
+                <label class="field">과목 특성<textarea id="characteristics" rows="3" placeholder="예: 개념·수식·계산 중심" maxlength="1000"></textarea></label>
                 <button class="primary action-button" type="submit">과목 추가</button>
               </form>
-            </section>
-
-            <section class="card workspace-card">
-              <div class="card-heading"><div><span class="step-number">02</span><h2>학년도별 강의</h2></div><p>교수·분반 구분</p></div>
-              <label class="field">강의 선택<select id="offering"></select></label>
-              <form id="offering-form" class="panel-form field-grid">
-                <label class="field">연도<input id="year" type="number" min="1990" max="2100" value="2026" required></label>
-                <label class="field">학기<select id="term"><option>1</option><option selected>2</option><option>여름</option><option>겨울</option></select></label>
-                <label class="field">교수<input id="professor" maxlength="100" placeholder="담당 교수"></label>
-                <label class="field">분반<input id="section" maxlength="50" placeholder="예: 01"></label>
-                <button class="primary action-button field-wide" type="submit">강의 추가</button>
-              </form>
-            </section>
-
-            <section class="card workspace-card page-wide">
-              <div class="card-heading"><div><span class="step-number">03</span><h2>교수·시험 특성</h2></div><p>근거와 신뢰도 함께 기록</p></div>
-              <ul id="factsList" class="compact-list"></ul>
-              <form id="fact-form" class="panel-form fact-grid">
-                <label class="field">특성 종류<select id="factKey"><option value="exam_type">시험 유형</option><option value="emphasis">교수 강조 내용</option><option value="study_style">정리·학습 스타일</option><option value="exam_scope">시험 범위</option><option value="other">기타 특징</option></select></label>
-                <label class="field fact-value">내용<input id="factValue" required maxlength="2000" placeholder="예: 수식 유도 과정 중시"></label>
-                <label class="field">근거<input id="factProvenance" maxlength="400" placeholder="예: 2025 기출 2번"></label>
-                <label class="field">신뢰도<select id="factConfidence"><option value="unknown">미확인</option><option value="official">공식</option><option value="observed">기출로 확인</option><option value="reported">수강 후기</option><option value="inferred">추정</option></select></label>
-                <button class="primary action-button" type="submit">특성 기록 추가</button>
-              </form>
+              <p class="hint">과목을 등록하면 자료·GPT 작업·정리본에서 바로 사용할 수 있어요.</p>
             </section>
           </div>
         </section>
