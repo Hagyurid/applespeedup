@@ -1,11 +1,11 @@
 {
   "name": "aplus-accelerator-v2",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
-    "check": "node --check web/app.js && node --check web/db.js && node --check domain/core.mjs && node --check sites/mcp-core.mjs && node --check sites/repository.mjs",
+    "check": "node --check web/app.js && node --check web/db.js && node --check web/connected.js && node --check domain/core.mjs && node --check sites/mcp-core.mjs && node --check sites/repository.mjs && node --check sites/assets.mjs && node --check sites/http.mjs",
     "serve": "python3 -m http.server 8765"
   },
   "description": "에쁠가속기 초기 0–4단계: 로컬 UX 프로토타입 및 Sites/MCP 이전 명세"

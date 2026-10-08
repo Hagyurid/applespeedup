@@ -17,3 +17,10 @@
 - CI: `npm run check` + `npm test`
 - 브라우저 E2E는 현재 실행 환경에서 localhost/file:// 탐색이 `ERR_BLOCKED_BY_ADMINISTRATOR`로 차단되어 미실행
 - 실제 Sites D1/R2, MCP HTTPS, 친구 권한, 실서비스 백업/이전 미완료
+
+## v0.6 추가 진행
+- 서버 측 요청 처리 `sites/http.mjs`, R2 업로드/다운로드 `sites/assets.mjs` 추가. D1 기존 과목·학년도 API 및 정리본 수정 버전 검사 연결.
+- `web/connected.html` 서버 연결 UI 추가: 과목·학년도, 출처별 교수/시험 특성, TXT/MD·원본 파일, GPT 요청문, 정리본. **실제 Sites에서는 미실행**.
+- PDF/DOCX/PPTX는 원본 보관만 가능하며 내용 추출은 `pending`. TXT/MD는 UTF-8 텍스트 청크화.
+- 실제 인증 제공자·사이트 사용자 맵핑·배포·친구 권한 테스트·Render 운영 데이터 백업은 여전히 미완료.
+- 프로젝트 브랜치: `Hagyurid/applespeedup` → `develop/aplus-v2`.

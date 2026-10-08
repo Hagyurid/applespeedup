@@ -2,9 +2,15 @@
 
 > **새 개발 저장소:** [Hagyurid/applespeedup](https://github.com/Hagyurid/applespeedup). 기존 [Hagyurid/study](https://github.com/Hagyurid/study)는 읽기 전용 참고 자료이며, 여기서 추가 개발하거나 수정하지 않습니다.
 
-**개발 스냅샷 v0.5.0 — 0~4단계 코드·시안·D1 리포지토리 모의 통합. 서비스 미배포.**
+**개발 스냅샷 v0.6.0 — 0~4단계 코드·시안·HTTP/MCP·R2 파일 업로드·D1 웹 연결 초안. 서비스 미배포.**
 
 기존 `Hagyurid/study`의 LectureNote Suite를 재설계하는 프로젝트. 사용자는 **음성이 아닌 전사본 텍스트**를 업로드하며, **Render와 OpenAI 모델 API 키를 사용하지 않는 것**을 목표로 한다.
+
+## 현재 구현된 범위
+- `web/connected.html`: D1 서버 API에 연결되는 과목·학년도·전사본·특성·정리본 화면 (실제 호스트 배포 필요)
+- `sites/http.mjs`: 인증된 사용자 요청만 허용하는 HTTP / MCP 처리기. 호스트 인증 어댑터·배포는 미완료.
+- `sites/assets.mjs`: R2 기반 TXT/MD·원본 문서 저장. PDF/DOCX/PPTX는 원문 추출 대기.
+- `docs/SERVER_INTEGRATION.md`: 실제 Sites 연결·인증을 위한 보완 및 배포 체크리스트.
 
 ## 지금 실행해 볼 수 있는 부분
 - 과목 프로필과 **학년도·교수별 강의 개설 정보**를 분리해 등록
@@ -32,7 +38,7 @@ node --test tests/*.test.mjs
 
 ## 중요한 제한 / 아직 완료되지 않은 부분
 1. **실제 ChatGPT Sites 배포 및 D1·R2 연결은 미완료.** 현재 대화 도구에 Sites 생성·게시 기능이 없어 Work/@Sites에서 연결해야 한다.
-2. **MCP 코어는 테스트 가능한 인터페이스**이며 실제 HTTPS MCP 서버·Sites 인증·D1 저장소 바인딩은 미완료. 현재 ChatGPT 플러그인은 설치/실행되지 않았다.
+2. **MCP 및 HTTP 코어는 테스트 가능한 인터페이스**이며 Sites 사용자 인증·D1/R2 실제 바인딩 및 플러그인 설치는 미완료. 현재 ChatGPT 플러그인은 설치/실행되지 않았다.
 3. 로컬 프로토타입은 TXT, MD, CSV 파일 텍스트 또는 직접 붙여 넣은 전사본을 처리한다. PDF/DOCX/PPTX는 파일명·메타데이터만 등록하며 원문 추출은 추후 구현·검증 사항이다. 브라우저 프로토타입에서 PDF 원본 바이너리를 영구 저장하지 않는다.
 4. Word OMML, PDF 출력, SolvePad 및 CASIO 정식 화면은 이번 단계 범위 밖이다.
 5. 브라우저의 로컬 저장소는 다중 사용자 공유·서버측 개인정보 권한 분리를 제공하지 않는다. Sites 배포 시 공식 인증/권한 정책 검증이 필수다.
@@ -42,7 +48,7 @@ node --test tests/*.test.mjs
 ## 주요 폴더
 - `web/`: 실행 가능한 로컬 UI 프로토타입
 - `domain/`: 과목 선택, 과거 자료 분리, 작업 요청, 검증 공통 로직
-- `sites/`: D1 SQL, 보안 검증 D1 리포지토리, MCP JSON-RPC 코어 (HTTP 전송/배포 전 연결 필요)
+- `sites/`: D1 SQL, 보안 검증 D1 리포지토리, MCP JSON-RPC 코어 + HTTP 전송·R2 어댑터 (실제 인증/배포 전 연결 필요)
 - `plugin/skills/`: ChatGPT 용 Skill 지침
 - `tests/`: 도메인 로직, MCP 코어, SQLite 기반 D1 리포지토리 통합 테스트
 - `docs/`: 아키텍처, QA, 마이그레이션 및 Sites 인계 계획
@@ -58,3 +64,9 @@ node --test tests/*.test.mjs
 - MCP 도구 6개 → 9개: `get_source_content`, `create_job`, `get_job` 추가.
 - `docs/GPT_WORKFLOW.md`에 대상 흐름과 실제 호스팅 이전의 한계를 기록했습니다.
 - 실제 Sites 연결·HTTP MCP 엔드포인트·웹 서버 데이터 연동은 여전히 미완료입니다.
+
+## v0.6 변경 내용
+- HTTP `/mcp` + 웹 API 구현, 요청 크기 제한·타인 파일 접근 차단·동일 오리진 요청 검사.
+- TXT·MD·PDF·DOCX·PPTX 원본 R2 저장 인터페이스, TXT·MD 즉시 검색 및 PDF 계열 `pending` 표기.
+- 연도별 강의 이력, 시험 정보 출처/신뢰도, 정리본 조회·수정, 원본 다운로드용 서버 연결 페이지.
+- 통합 테스트는 별도의 Node SQLite/R2 모의 저장소에서 실행하며, 실제 Sites 배포 완료를 의미하지 않습니다.

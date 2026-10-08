@@ -3,7 +3,7 @@
 ## 목표
 별도 OpenAI 모델 API, Render 호출 없이 ChatGPT 플러그인에서 자료 검색과 정리본 저장.
 
-> **주의:** 현재 HTTP 전송·실제 Sites 인증 바인딩·D1 배포·플러그인 게시가 아직 완료되지 않았습니다. 여기는 JSON-RPC 코어 + D1 형식 데이터 접근 계층과 테스트의 기준 계약입니다.
+> **주의:** 현재 HTTP 처리기는 존재하지만 실제 Sites 인증 바인딩·D1/R2 배포·플러그인 게시가 아직 완료되지 않았습니다. 여기는 JSON-RPC 코어 + D1 형식 데이터 접근 계층과 테스트의 기준 계약입니다.
 
 ## 실제 MCP 9개 도구
 | 도구 | 동작 | 권한 |
@@ -38,3 +38,9 @@
 
 ## 테스트 근거
 `npm test`: SQLite `node:sqlite`를 사용하는 D1 인터페이스 모의 테스트에서 과목·학년도 분리, 전사본 업로드, 조회, 정리본 저장/버전, 권한·작업 이어하기를 검증. **실제 Cloudflare D1 연결 또는 ChatGPT 플러그인 E2E 검증과 동일하지 않음.**
+
+## v0.6 웹 서버 연결 메모
+- `web/connected.html`: 실서비스 D1 연결을 위한 웹 프런트 초기 화면이며, `/api/courses`→`/api/offerings`→`/api/transcripts`/`/api/assets`→`/api/notes`를 사용.
+- `sites/http.mjs`: 요청 처리 및 인증 주입 지점. 호스트 세션/OAuth 검증 구현은 미포함.
+- 과거 학년도 개설 강의 목록은 `get_course_context.previous_offerings`에 포함됩니다. 전년도 파일 원문을 사용할 경우 해당 `offering_id`로 별도 조회하고, 올해 강의 근거로 간주하지 않습니다.
+- PDF/Word/PPT 원문은 아직 모델에게 제공되는 검색 텍스트가 아닙니다. 추출 완료 전 GPT가 읽었다고 말하면 안 됩니다.
