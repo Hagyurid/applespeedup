@@ -1,22 +1,10 @@
-import {test, before} from 'node:test';
+import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {DatabaseSync} from 'node:sqlite';
-import {readFileSync} from 'node:fs';
+import {D1TestDatabase} from './helpers/storage.mjs';
 import {createD1Repository} from '../sites/repository.mjs';
 import {handleMessage} from '../sites/mcp-core.mjs';
 
-class D1Mock {
-  constructor(){this.db=new DatabaseSync(':memory:');this.db.exec(readFileSync(new URL('../sites/schema.sql',import.meta.url),'utf8'));}
-  prepare(sql){return {bind:(...args)=>({
-    first: async()=>this.db.prepare(sql).get(...args)||null,
-    all: async()=>({results:this.db.prepare(sql).all(...args)}),
-    run: async()=>({meta:{changes:Number(this.db.prepare(sql).run(...args).changes)}})
-  })};}
-  async batch(items){
-    const result=[];this.db.exec('BEGIN TRANSACTION');
-    try {for(const item of items){result.push(await item.run());}this.db.exec('COMMIT');return result;}
-    catch(err){this.db.exec('ROLLBACK');throw err;}
-  }
+class D1Mock extends D1TestDatabase {
   seed(){
     const db=this.db;
     db.prepare('INSERT INTO users(id,email) VALUES(?,?)').run('u1','user1@example.com');

@@ -7,3 +7,15 @@ node_modules/
 backups/*.zip
 backups/*.sqlite3
 backups/*.db
+
+# Sites runtime and generated assets
+dist/
+.vinext/
+.next/
+.wrangler/
+.sites-runtime/
+public/web/
+public/domain/
+*.tsbuildinfo
+.env.*
+!.env.example

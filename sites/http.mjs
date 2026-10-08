@@ -51,6 +51,7 @@ export function createHttpHandler({db,bucket,authenticate,allowedOrigin}={}){
       if(method==='GET'&&url.pathname==='/api/offerings')return json(await repo.listOfferings(userId,{course_id:url.searchParams.get('course_id')}));
       if(method==='GET'&&url.pathname==='/api/course-context')return json(await repo.getCourseContext(userId,{offering_id:url.searchParams.get('offering_id')}));
       if(method==='GET'&&url.pathname==='/api/sources')return json(await repo.listSources(userId,{offering_id:url.searchParams.get('offering_id')}));
+      if(method==='GET'&&url.pathname==='/api/search')return json(await repo.searchSourceContent(userId,{offering_id:url.searchParams.get('offering_id'),query:url.searchParams.get('query')}));
       if(method==='GET'&&url.pathname==='/api/notes-list')return json(await repo.listNotes(userId,{offering_id:url.searchParams.get('offering_id')}));
       if(method==='GET'&&url.pathname==='/api/notes'){
         const note_id=url.searchParams.get('note_id');if(!note_id)return fail(400,'note_id required');

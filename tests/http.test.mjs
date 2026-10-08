@@ -1,27 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {DatabaseSync} from 'node:sqlite';
-import {readFileSync} from 'node:fs';
 import {createHttpHandler} from '../sites/http.mjs';
-class D1Mock {
-  constructor(){this.db=new DatabaseSync(':memory:');this.db.exec(readFileSync(new URL('../sites/schema.sql',import.meta.url),'utf8'));}
-  prepare(sql){return {bind:(...args)=>({
-    first:async()=>this.db.prepare(sql).get(...args)||null,
-    all:async()=>({results:this.db.prepare(sql).all(...args)}),
-    run:async()=>({meta:{changes:Number(this.db.prepare(sql).run(...args).changes)}})
-  })};}
-  async batch(items){
-    this.db.exec('BEGIN');
-    try{const result=[];for(const item of items)result.push(await item.run());this.db.exec('COMMIT');return result;}
-    catch(e){this.db.exec('ROLLBACK');throw e;}
-  }
-}
-class BucketMock{
-  constructor(){this.map=new Map();}
-  async put(k,v){this.map.set(k,new Uint8Array(v));}
-  async get(k){const bytes=this.map.get(k);return bytes?{body:new Blob([bytes]).stream()}:null;}
-  async delete(k){this.map.delete(k);}
-}
+import {D1TestDatabase as D1Mock,R2TestBucket as BucketMock} from './helpers/storage.mjs';
 function suite(){
   const db=new D1Mock(),bucket=new BucketMock();
   for(const [id,email] of [['u1','user1@example.com'],['u2','user2@example.com'],['u3','user3@example.com']])

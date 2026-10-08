@@ -3,6 +3,8 @@
  * This module never trusts user IDs, course IDs or offering IDs supplied by a model.
  */
 
+import {splitTranscript} from '../domain/core.mjs';
+import {contentHash} from './content.mjs';
 const fail=(code)=>{const e=new Error(code);e.code=code;throw e;};
 const writeRoles=new Set(['owner','editor']);
 const trim=(value,limit)=>String(value??'').trim().slice(0,limit);
@@ -16,7 +18,7 @@ export function createD1Repository(db){
   const all=async(sql,...params)=>(await q(sql,...params).all()).results||[];
   async function authorizeOffering(userId,offeringId,write=false){
     if(!userId || !offeringId)fail('FORBIDDEN');
-    const row=await first(`SELECT o.id, o.course_id, o.year, o.term, o.professor, o.notes,
+    const row=await first(`SELECT o.id, o.course_id, o.year, o.term, o.professor, o.section, o.notes,
       c.name, c.characteristics, c.owner_user_id, m.role
       FROM offerings o JOIN courses c ON c.id=o.course_id
       LEFT JOIN course_members m ON m.course_id=c.id AND m.user_id=?
@@ -46,25 +48,29 @@ export function createD1Repository(db){
       if(!exists)fail('FORBIDDEN');
       const cid=uuid();
       await q(`INSERT INTO courses(id,owner_user_id,name,characteristics,preferred_mode)
-          VALUES(?,?,?,?,?)`,cid,userId,t,trim(characteristics,3000),trim(preferred_mode,100)).run();
-      return {id:cid,name:t};
+          VALUES(?,?,?,?,?) ON CONFLICT(owner_user_id,name) DO NOTHING`,cid,userId,t,trim(characteristics,3000),trim(preferred_mode,100)).run();
+      const row=await first('SELECT id,name FROM courses WHERE owner_user_id=? AND name=?',userId,t);
+      return {...row,reused:row.id!==cid};
     },
     async listOfferings(userId,{course_id}){
       const c=await first(`SELECT c.id FROM courses c LEFT JOIN course_members m ON m.course_id=c.id AND m.user_id=?
         WHERE c.id=? AND (c.owner_user_id=? OR m.user_id=?)`,userId,course_id,userId,userId);
       if(!c)fail('NOT_FOUND');
-      return all('SELECT id,course_id,year,term,professor,notes FROM offerings WHERE course_id=? ORDER BY year DESC,term DESC',course_id);
+      return all('SELECT id,course_id,year,term,professor,section,notes FROM offerings WHERE course_id=? ORDER BY year DESC,term DESC,section',course_id);
     },
-    async createOffering(userId,{course_id,year,term,professor='',notes=''}){
+    async createOffering(userId,{course_id,year,term,professor='',section='',notes=''}){
       const c=await first(`SELECT c.id,c.owner_user_id,m.role FROM courses c LEFT JOIN course_members m ON m.course_id=c.id AND m.user_id=?
         WHERE c.id=? AND (c.owner_user_id=? OR m.user_id=?)`,userId,course_id,userId,userId);
       if(!c)fail('NOT_FOUND');
       if(c.owner_user_id!==userId&&!writeRoles.has(c.role))fail('FORBIDDEN');
       if(!Number.isInteger(year)||year<1990||year>2100||!['1','2','여름','겨울'].includes(term))fail('BAD_REQUEST');
       const oid=uuid();
-      await q('INSERT INTO offerings(id,course_id,year,term,professor,notes) VALUES(?,?,?,?,?,?)',
-        oid,course_id,year,term,trim(professor,100),trim(notes,4000)).run();
-      return {id:oid,course_id,year,term};
+      const prof=trim(professor,100),group=trim(section,50);
+      await q(`INSERT INTO offerings(id,course_id,year,term,professor,section,notes) VALUES(?,?,?,?,?,?,?)
+        ON CONFLICT(course_id,year,term,professor,section) DO NOTHING`,
+        oid,course_id,year,term,prof,group,trim(notes,4000)).run();
+      const row=await first('SELECT id FROM offerings WHERE course_id=? AND year=? AND term=? AND professor=? AND section=?',course_id,year,term,prof,group);
+      return {id:row.id,course_id,year,term,section:group,reused:row.id!==oid};
     },
     async getAssetMetadata(userId,{source_id}){
       await authorizeSource(userId,source_id);
@@ -73,29 +79,29 @@ export function createD1Repository(db){
       if(!meta)fail('NOT_FOUND');
       return meta;
     },
-    async registerUploadedAsset(userId,{id,offering_id,source_type,title,file_name,mime_type,storage_key,sha256,provenance='',text=null}){
+    async findDuplicateAsset(userId,{offering_id,source_type,sha256}){
+      await authorizeOffering(userId,offering_id);
+      if(!sha256)return null;
+      return first('SELECT id AS source_id,extract_status FROM source_assets WHERE offering_id=? AND source_type=? AND sha256=?',offering_id,source_type,sha256);
+    },
+    async registerUploadedAsset(userId,{id,offering_id,source_type,title,file_name='',mime_type='text/plain',storage_key=null,sha256,provenance='',text=null}){
       await authorizeOffering(userId,offering_id,true);
       const type=String(source_type),t=String(title||'').trim();
-      if(!id||!t||!storage_key||!['lecture_slides','transcript','textbook','past_exam','exam_trend','syllabus','other'].includes(type))fail('BAD_REQUEST');
-      const chunks=[];
+      if(!id||!t||(!storage_key&&text===null)||!['lecture_slides','transcript','textbook','past_exam','exam_trend','syllabus','other'].includes(type))fail('BAD_REQUEST');
+      let chunks=[];
       if(typeof text==='string'){
         if(!text.trim()||text.length>1500000)fail('BAD_REQUEST');
-        const max=1600,paragraphs=text.replace(/\r\n?/g,'\n').split(/\n\s*\n/);
-        let buf='';
-        const flush=()=>{if(buf){chunks.push(buf);buf='';}};
-        for(const para of paragraphs){
-          const v=para.trim();if(!v)continue;
-          if(v.length>max){flush();for(let i=0;i<v.length;i+=max)chunks.push(v.slice(i,i+max));continue;}
-          if(buf&&buf.length+v.length+2>max)flush();
-          buf=buf?buf+'\n\n'+v:v;
-        }
-        flush();
+        chunks=splitTranscript(text,1600);
       }
       const state=text===null?'pending':'ready';
       const st=[q(`INSERT INTO source_assets(id,offering_id,source_type,title,file_name,mime_type,storage_key,sha256,extract_status,provenance)
         VALUES(?,?,?,?,?,?,?,?,?,?)`,id,offering_id,type,t,file_name,mime_type,storage_key,sha256,state,provenance)];
       for(let i=0;i<chunks.length;i++)st.push(q('INSERT INTO source_chunks(id,source_id,page_num,chunk_index,text_content) VALUES(?,?,NULL,?,?)',uuid(),id,i,chunks[i]));
-      await db.batch(st);
+      try{await db.batch(st);}catch(e){
+        const duplicate=await this.findDuplicateAsset(userId,{offering_id,source_type:type,sha256});
+        if(duplicate)return {...duplicate,reused:true};
+        throw e;
+      }
       return {source_id:id,extract_status:state,chunks:chunks.length};
     },
     async getCourseContext(userId,{offering_id}){
@@ -103,10 +109,10 @@ export function createD1Repository(db){
       const facts=await all(`SELECT fact_key, fact_value, provenance, confidence, offering_id
         FROM course_facts WHERE course_id=? AND (offering_id IS NULL OR offering_id=?)
         ORDER BY created_at DESC LIMIT 100`,o.course_id,offering_id);
-      const otherOfferings=await all(`SELECT id,year,term,professor,notes FROM offerings
+      const otherOfferings=await all(`SELECT id,year,term,professor,section,notes FROM offerings
         WHERE course_id=? AND id<>? ORDER BY year DESC,term DESC LIMIT 30`,o.course_id,offering_id);
       return {course:{id:o.course_id,name:o.name,characteristics:o.characteristics},
-        offering:{id:o.id,year:o.year,term:o.term,professor:o.professor,notes:o.notes},
+        offering:{id:o.id,year:o.year,term:o.term,professor:o.professor,section:o.section,notes:o.notes},
         facts,previous_offerings:otherOfferings};
     },
     async saveCourseFact(userId,{offering_id,fact_key,fact_value,provenance,confidence='unknown'}){
@@ -152,7 +158,7 @@ export function createD1Repository(db){
       await authorizeOffering(userId,n.offering_id);
       return {id:n.id,offering_id:n.offering_id,title:n.title,content_markdown:n.content_markdown,revision:n.revision,updated_at:n.updated_at};
     },
-    async saveNote(userId,{offering_id,note_id,expected_revision,title,content_markdown}){
+    async saveNote(userId,{offering_id,note_id,expected_revision,title,content_markdown,request_id}){
       await authorizeOffering(userId,offering_id,true);
       const t=trim(title,300),content=String(content_markdown??'');
       if(!t || !content.trim() || content.length>400000)fail('BAD_REQUEST');
@@ -173,12 +179,19 @@ export function createD1Repository(db){
         if(results[0]?.meta?.changes!==1)fail('REVISION_CONFLICT');
         return {id:note_id,revision:next,updated_at:timestamp};
       }
+      const key=request_id??null;
+      if(key!==null&&(typeof key!=='string'||!/^[a-zA-Z0-9._-]{1,128}$/.test(key)))fail('BAD_REQUEST');
       const newId=uuid();
-      await db.batch([
-        q(`INSERT INTO notes(id,offering_id,title,content_markdown,revision,created_by_user_id,created_at,updated_at)
-           VALUES(?,?,?,?,1,?,?,?)`,newId,offering_id,t,content,userId,timestamp,timestamp),
+      try{await db.batch([
+        q(`INSERT INTO notes(id,offering_id,title,content_markdown,revision,created_by_user_id,creation_key,created_at,updated_at)
+           VALUES(?,?,?,?,1,?,?,?,?)`,newId,offering_id,t,content,userId,key,timestamp,timestamp),
         q('INSERT INTO note_versions(note_id,revision,title,content_markdown,created_at) VALUES(?,1,?,?,?)',newId,t,content,timestamp)
-      ]);
+      ]);}catch(e){
+        const previous=key?await first('SELECT id,title,content_markdown,revision,updated_at FROM notes WHERE offering_id=? AND created_by_user_id=? AND creation_key=?',offering_id,userId,key):null;
+        if(!previous)throw e;
+        if(previous.title!==t||previous.content_markdown!==content)fail('REVISION_CONFLICT');
+        return {id:previous.id,revision:previous.revision,updated_at:previous.updated_at,reused:true};
+      }
       return {id:newId,revision:1,updated_at:timestamp};
     },
     async saveCheckpoint(userId,{job_id,step,status,result_ref=''}){
@@ -220,23 +233,11 @@ export function createD1Repository(db){
       await authorizeOffering(userId,offering_id,true);
       const value=String(text??''),t=trim(title,200);
       if(!t || !value.trim() || value.length>1500000)fail('BAD_REQUEST');
-      const sourceId=uuid(),chunks=[];const max=1600;
-      const paragraphs=value.replace(/\r\n?/g,'\n').split(/\n\s*\n/);
-      let buf='';
-      function flush(){if(buf){chunks.push(buf);buf='';}}
-      for(const para of paragraphs){
-        const p=para.trim();if(!p)continue;
-        if(p.length>max){flush();for(let i=0;i<p.length;i+=max)chunks.push(p.slice(i,i+max));continue;}
-        if(buf && buf.length+p.length+2>max)flush();
-        buf=buf?buf+'\n\n'+p:p;
-      }
-      flush();
-      const statements=[q(`INSERT INTO source_assets(id,offering_id,source_type,title,file_name,mime_type,extract_status,provenance)
-        VALUES(?,?,'transcript',?,'','text/plain','ready',?)`,sourceId,offering_id,t,trim(provenance,400))];
-      for(let i=0;i<chunks.length;i++)statements.push(q(`INSERT INTO source_chunks(id,source_id,page_num,chunk_index,text_content)
-        VALUES(?,?,NULL,?,?)`,uuid(),sourceId,i,chunks[i]));
-      await db.batch(statements);
-      return {source_id:sourceId,chunks:chunks.length,extract_status:'ready'};
+      const sha256=await contentHash(new TextEncoder().encode(value));
+      const duplicate=await this.findDuplicateAsset(userId,{offering_id,source_type:'transcript',sha256});
+      if(duplicate)return {...duplicate,reused:true};
+      return this.registerUploadedAsset(userId,{id:uuid(),offering_id,source_type:'transcript',title:t,
+        sha256,provenance:trim(provenance,400),text:value});
     },
     async getSourceContent(userId,{source_id,page_num,offset=0,limit=10}){
       await authorizeSource(userId,source_id);

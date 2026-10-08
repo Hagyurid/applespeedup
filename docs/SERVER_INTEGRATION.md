@@ -1,3 +1,13 @@
+# v0.7 Sites 연결
+
+현재 진입점은 `build/sites-worker.ts` → `sites/runtime.mjs` → 기존 HTTP/리포지토리입니다. 검증된 Sites 헤더를 `sites/auth.mjs`에서 읽고 논리 바인딩 `DB`/`BUCKET`을 사용합니다. Drizzle 마이그레이션이 운영 스키마를 관리합니다. 자료 변경은 `APLUS_WRITES_ENABLED=false`가 기본값이며 실제 로그인 검증 후에만 해제합니다. 현재 `/mcp`는 준비 중으로 503을 반환합니다.
+
+완료·미완료 범위와 승인 후 검증: [SITES_PREVIEW_REVIEW.md](SITES_PREVIEW_REVIEW.md)
+
+---
+
+아래 v0.6 인계 내용은 이전 기록이며 호스트 어댑터 예시는 실제 v0.7 연결보다 우선하지 않습니다.
+
 # 에쁠가속기 v0.6: Sites 서버 및 MCP 연결 인계
 
 ## 운영 전제

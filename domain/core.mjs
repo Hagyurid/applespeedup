@@ -51,7 +51,7 @@ export function makeRequest({course,offering,sources,mode,scope='전체',preset,
     '@에쁠가속기 아래 작업을 실행해 줘. 자료와 결과물의 실제 내용은 반드시 플러그인 MCP로 조회·저장해.',
     `작업 ID: ${jobId||'신규'}`,
     `과목: ${course.name} (course_id=${course.id})`,
-    `학년도 강의: ${offering.year}년 ${offering.term}학기, ${offering.professor||'교수 미지정'} (offering_id=${offering.id})`,
+    `학년도 강의: ${offering.year}년 ${offering.term}학기, ${offering.professor||'교수 미지정'}${offering.section?' · '+offering.section+'분반':''} (offering_id=${offering.id})`,
     `작업: ${MODES[mode]} (mode=${mode}), 범위: ${scope}`,
     `과목 특성: ${course.characteristics||'미등록'}`,
     `현재 강의 설명: ${offering.notes||'미등록'}`,
@@ -68,7 +68,7 @@ export function makeRequest({course,offering,sources,mode,scope='전체',preset,
   return {text:lines.join('\n'), sourceIds:picked.map(x=>x.id),warnings:[...(current.length?[]:['현재 강의 관련 자료가 없습니다.']),...(picked.some(s=>s.extractStatus!=='ready')?['원문 추출이 안 된 자료가 있습니다.']:[])]};
 }
 export function splitTranscript(text,max=1800){
-  const t=normalizeText(text); if(!t)return [];
+  const t=String(text??'').replace(/\r\n?/g,'\n').trim(); if(!t)return [];
   const blocks=t.split(/\n\s*\n/).map(x=>x.trim()).filter(Boolean);let chunks=[];let cur='';
   for(const b of blocks){ if((cur.length+b.length+2)>max && cur){chunks.push(cur);cur='';} if(b.length>max){if(cur){chunks.push(cur);cur='';}for(let i=0;i<b.length;i+=max)chunks.push(b.slice(i,i+max));}else cur+=`${cur?'\n\n':''}${b}`; }
   if(cur)chunks.push(cur);return chunks;

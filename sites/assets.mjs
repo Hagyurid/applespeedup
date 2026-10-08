@@ -1,4 +1,5 @@
 /** Authenticated R2 asset storage; the public web server must NEVER expose bucket keys. */
+import {contentHash} from './content.mjs';
 const accepted = Object.freeze({
   '.txt': { mime: 'text/plain', ready: true },
   '.md': { mime: 'text/markdown', ready: true },
@@ -9,7 +10,6 @@ const accepted = Object.freeze({
 const MAX_BYTES = 8 * 1024 * 1024;
 function error(code){const e=new Error(code);e.code=code;throw e;}
 function mimeFor(name){const ext=String(name).toLowerCase().match(/\.[a-z0-9]+$/)?.[0];return ext ? accepted[ext] : undefined;}
-function hex(bytes){return [...bytes].map(b=>b.toString(16).padStart(2,'0')).join('');}
 export async function storeAsset({bucket,repository,userId,offeringId,file,sourceType,title,provenance=''}){
   if(!bucket?.put||!bucket?.get||!bucket?.delete)error('STORAGE_NOT_CONFIGURED');
   // Authorization always happens BEFORE the byte stream is stored in R2.
@@ -29,13 +29,15 @@ export async function storeAsset({bucket,repository,userId,offeringId,file,sourc
   if((ext==='.docx'||ext==='.pptx') && !(bytes[0]===0x50&&bytes[1]===0x4b))error('BAD_FILE');
   const sourceId=crypto.randomUUID();
   const key=`sources/${offeringId}/${sourceId}`;
-  const digest=hex(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)));
+  const digest=await contentHash(bytes);
   let text=null;
   if(info.ready){
     // Reject invalid UTF-8 instead of silently persisting replacement characters.
     try{text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch{error('BAD_FILE');}
     if(!text.trim()||text.length>1500000)error('BAD_FILE');
   }
+  const duplicate=await repository.findDuplicateAsset(userId,{offering_id:offeringId,source_type:sourceType,sha256:digest});
+  if(duplicate)return {...duplicate,sha256:digest,reused:true};
   await bucket.put(key,bytes,{httpMetadata:{contentType:info.mime}});
   try{
     const result=await repository.registerUploadedAsset(userId,{
@@ -43,6 +45,7 @@ export async function storeAsset({bucket,repository,userId,offeringId,file,sourc
       file_name:name.slice(0,200),mime_type:info.mime,storage_key:key,sha256:digest,
       provenance:String(provenance).slice(0,400),text
     });
+    if(result.source_id!==sourceId)await bucket.delete(key);
     return {...result,sha256:digest};
   }catch(e){try{await bucket.delete(key);}catch{/* R2 cleanup must be monitored in production */}throw e;}
 }

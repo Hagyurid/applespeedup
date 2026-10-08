@@ -1,3 +1,5 @@
+> v0.7 이후의 현재 연결·검증 상태는 [SITES_PREVIEW_REVIEW.md](SITES_PREVIEW_REVIEW.md)를 참조하세요. 아래는 이전 인계 기록입니다.
+
 # ChatGPT Work / @Sites 인계 지시서
 
 ## 사이트 이름

@@ -2,7 +2,9 @@
 
 > **새 개발 저장소:** [Hagyurid/applespeedup](https://github.com/Hagyurid/applespeedup). 기존 [Hagyurid/study](https://github.com/Hagyurid/study)는 읽기 전용 참고 자료이며, 여기서 추가 개발하거나 수정하지 않습니다.
 
-**개발 스냅샷 v0.6.0 — 0~4단계 코드·시안·HTTP/MCP·R2 파일 업로드·D1 웹 연결 초안. 서비스 미배포.**
+**v0.7.0-preview.1 — Sites 프로젝트 등록, 공식 Worker 구조·D1/R2·인증 어댑터 검토 버전. 서비스 미배포.**
+
+최신 검증·완료 범위는 [Sites 검토 보고서](docs/SITES_PREVIEW_REVIEW.md)를 확인하세요. Node 테스트 38개와 빌드된 Worker 통합 검사 10개를 통과했습니다. 운영 D1/R2·실제 ChatGPT 로그인·브라우저 사용 테스트는 미검증입니다. 첫 배포는 사용자 승인 후 본인 전용·자료 변경 잠금 상태로 진행합니다. 아래 v0.6 설명은 이전 스냅샷 기록입니다.
 
 기존 `Hagyurid/study`의 LectureNote Suite를 재설계하는 프로젝트. 사용자는 **음성이 아닌 전사본 텍스트**를 업로드하며, **Render와 OpenAI 모델 API 키를 사용하지 않는 것**을 목표로 한다.
 
@@ -37,7 +39,7 @@ node --test tests/*.test.mjs
 ```
 
 ## 중요한 제한 / 아직 완료되지 않은 부분
-1. **실제 ChatGPT Sites 배포 및 D1·R2 연결은 미완료.** 현재 대화 도구에 Sites 생성·게시 기능이 없어 Work/@Sites에서 연결해야 한다.
+1. **운영 Sites 배포 및 D1·R2 연결 검증은 미완료.** v0.7에서 프로젝트 등록과 로컬 Worker 연결을 완료했으며, 승인 후 첫 비공개 배포가 필요하다.
 2. **MCP 및 HTTP 코어는 테스트 가능한 인터페이스**이며 Sites 사용자 인증·D1/R2 실제 바인딩 및 플러그인 설치는 미완료. 현재 ChatGPT 플러그인은 설치/실행되지 않았다.
 3. 로컬 프로토타입은 TXT, MD, CSV 파일 텍스트 또는 직접 붙여 넣은 전사본을 처리한다. PDF/DOCX/PPTX는 파일명·메타데이터만 등록하며 원문 추출은 추후 구현·검증 사항이다. 브라우저 프로토타입에서 PDF 원본 바이너리를 영구 저장하지 않는다.
 4. Word OMML, PDF 출력, SolvePad 및 CASIO 정식 화면은 이번 단계 범위 밖이다.

@@ -1,23 +1,16 @@
 # 에쁠가속기 · A+ Accelerator
 
-개발 대상: `Hagyurid/applespeedup` — `develop/aplus-v2` 브랜치.
+2026-10-08 · v0.7.0-preview.1
 
-기존 `Hagyurid/study`는 **참고 전용**이며, 기존 Render는 데이터 이전·검증 전까지 변경하거나 해지하지 않습니다.
+개발 대상은 `Hagyurid/applespeedup`의 `develop/aplus-v2`입니다. `Hagyurid/study`는 수정하지 않습니다.
 
-## 범위
-- 별도 OpenAI 모델 API 없음, 별도 Render 서비스 없음(목표)
-- AI 제작·분석은 ChatGPT 내 플러그인 Skills/MCP를 통해 지시
-- 녹음/음성 인식은 제외. 강의 전사본은 TXT/MD/DOCX 등 **텍스트 전사본**으로 업로드
-- 과목 기본 정보, 연도·학기·교수별 강의 정보, 과거 기출을 별도로 관리
-- 정리본·문제팩·학습 기록은 같은 데이터 구조에서 연결
+Sites 프로젝트를 등록하고 기존 v0.6 UI·서버 로직을 공식 Worker 구조에 연결했습니다. D1/R2의 **로컬 Worker 검증은 통과**했으며, 운영 배포·실제 ChatGPT 로그인·브라우저 사용 테스트는 미완료입니다.
 
-## 현재 구현 상태
-- 로컬 v0.4 프로토타입과 14개 자동 테스트 통과(기존 세션 작업물)
-- Sites D1/R2 배포 및 실제 MCP 연결은 아직 검증·완료되지 않음
-- Render 실제 SQLite/파일 백업 및 새 서버로의 마이그레이션 미실시
+- 별도 OpenAI 모델 API 키, Render, 기존 데이터 이관, 녹음 업로드/자동 전사 없음
+- 실제 로그인 검증 전에는 운영 자료 변경을 기본 잠금
+- PDF 원본 보관은 구현됨. 페이지별 추출은 미완료
+- 기존 MCP/Skill 코어 보존. Site 플러그인은 미연결이며 `/mcp` 잠금
+- Node 테스트 38개 및 Worker 통합 검사 10개 통과
+- 실서비스 배포는 사용자 승인 후 진행
 
-## 다음 작업
-1. v0.4 전체 소스와 테스트를 새 브랜치로 가져오기
-2. 사이트 배포 환경에서 D1/R2·MCP 인증·파일 처리 검증
-3. 과목/학년도·전사본 업로드·검색·정리본 저장 E2E 검증
-4. 기존 데이터 이전 후 Render 종료 여부 판단
+자세한 검토 범위와 다음 단계: [SITES_PREVIEW_REVIEW.md](docs/SITES_PREVIEW_REVIEW.md)

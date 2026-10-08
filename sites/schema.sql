@@ -1,94 +1,202 @@
--- 에쁠가속기 v2: D1 schema proposal. Run ONLY after adapting to actual ChatGPT Sites project runtime.
+-- GENERATED from Drizzle migrations for Node/SQLite tests. Production uses drizzle/*.sql.
 PRAGMA foreign_keys=ON;
-CREATE TABLE IF NOT EXISTS users (
- id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, display_name TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE `source_assets` (
+	`id` text PRIMARY KEY NOT NULL,
+	`offering_id` text NOT NULL,
+	`source_type` text NOT NULL,
+	`title` text NOT NULL,
+	`file_name` text DEFAULT '' NOT NULL,
+	`mime_type` text DEFAULT '' NOT NULL,
+	`storage_key` text,
+	`sha256` text,
+	`extract_status` text DEFAULT 'pending' NOT NULL,
+	`provenance` text DEFAULT '' NOT NULL,
+	`year_reference` integer,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	FOREIGN KEY (`offering_id`) REFERENCES `offerings`(`id`) ON UPDATE no action ON DELETE cascade,
+	CONSTRAINT "asset_extract_status" CHECK("source_assets"."extract_status" IN ('pending','ready','failed','unsupported'))
 );
-CREATE TABLE IF NOT EXISTS courses (
- id TEXT PRIMARY KEY, owner_user_id TEXT NOT NULL REFERENCES users(id), name TEXT NOT NULL,
- characteristics TEXT NOT NULL DEFAULT '', preferred_mode TEXT NOT NULL DEFAULT 'detailed_note',
- created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+--> statement-breakpoint
+CREATE INDEX `idx_assets_offering_type` ON `source_assets` (`offering_id`,`source_type`);--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_assets_content` ON `source_assets` (`offering_id`,`source_type`,`sha256`);--> statement-breakpoint
+CREATE TABLE `private_attempts` (
+	`id` text PRIMARY KEY NOT NULL,
+	`user_id` text NOT NULL,
+	`pack_id` text NOT NULL,
+	`data_json` text NOT NULL,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`pack_id`) REFERENCES `problem_packs`(`id`) ON UPDATE no action ON DELETE no action,
+	CONSTRAINT "attempt_json" CHECK(json_valid("private_attempts"."data_json"))
 );
-CREATE TABLE IF NOT EXISTS course_members (
- course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
- user_id TEXT NOT NULL REFERENCES users(id), role TEXT NOT NULL CHECK(role IN ('owner','editor','viewer')),
- PRIMARY KEY(course_id,user_id)
+--> statement-breakpoint
+CREATE TABLE `job_checkpoints` (
+	`id` text PRIMARY KEY NOT NULL,
+	`job_id` text NOT NULL,
+	`step` text NOT NULL,
+	`status` text NOT NULL,
+	`result_ref` text,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	FOREIGN KEY (`job_id`) REFERENCES `jobs`(`id`) ON UPDATE no action ON DELETE cascade
 );
-CREATE TABLE IF NOT EXISTS offerings (
- id TEXT PRIMARY KEY, course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
- year INTEGER NOT NULL, term TEXT NOT NULL, professor TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '',
- created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
- UNIQUE(course_id,year,term,professor)
+--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_checkpoints_job_step` ON `job_checkpoints` (`job_id`,`step`);--> statement-breakpoint
+CREATE TABLE `source_chunks` (
+	`id` text PRIMARY KEY NOT NULL,
+	`source_id` text NOT NULL,
+	`page_num` integer,
+	`chunk_index` integer NOT NULL,
+	`text_content` text NOT NULL,
+	FOREIGN KEY (`source_id`) REFERENCES `source_assets`(`id`) ON UPDATE no action ON DELETE cascade
 );
-CREATE TABLE IF NOT EXISTS course_facts (
- id TEXT PRIMARY KEY, course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
- offering_id TEXT REFERENCES offerings(id), fact_key TEXT NOT NULL, fact_value TEXT NOT NULL,
- provenance TEXT NOT NULL DEFAULT '', confidence TEXT NOT NULL CHECK(confidence IN ('official','observed','reported','inferred','unknown')) DEFAULT 'unknown',
- created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_chunks_source_index` ON `source_chunks` (`source_id`,`chunk_index`);--> statement-breakpoint
+CREATE INDEX `idx_chunks_source_page` ON `source_chunks` (`source_id`,`page_num`);--> statement-breakpoint
+CREATE TABLE `courses` (
+	`id` text PRIMARY KEY NOT NULL,
+	`owner_user_id` text NOT NULL,
+	`name` text NOT NULL,
+	`characteristics` text DEFAULT '' NOT NULL,
+	`preferred_mode` text DEFAULT 'detailed_note' NOT NULL,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	FOREIGN KEY (`owner_user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action
 );
-CREATE TABLE IF NOT EXISTS source_assets (
- id TEXT PRIMARY KEY, offering_id TEXT NOT NULL REFERENCES offerings(id) ON DELETE CASCADE,
- source_type TEXT NOT NULL, title TEXT NOT NULL, file_name TEXT NOT NULL DEFAULT '',
- mime_type TEXT NOT NULL DEFAULT '', storage_key TEXT, sha256 TEXT, extract_status TEXT NOT NULL DEFAULT 'pending',
- provenance TEXT NOT NULL DEFAULT '', year_reference INTEGER,
- created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
- CHECK (extract_status IN ('pending','ready','failed','unsupported'))
+--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_courses_owner_name` ON `courses` (`owner_user_id`,`name`);--> statement-breakpoint
+CREATE TABLE `course_facts` (
+	`id` text PRIMARY KEY NOT NULL,
+	`course_id` text NOT NULL,
+	`offering_id` text,
+	`fact_key` text NOT NULL,
+	`fact_value` text NOT NULL,
+	`provenance` text DEFAULT '' NOT NULL,
+	`confidence` text DEFAULT 'unknown' NOT NULL,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	FOREIGN KEY (`course_id`) REFERENCES `courses`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`offering_id`) REFERENCES `offerings`(`id`) ON UPDATE no action ON DELETE no action,
+	CONSTRAINT "fact_confidence" CHECK("course_facts"."confidence" IN ('official','observed','reported','inferred','unknown'))
 );
-CREATE TABLE IF NOT EXISTS source_pages (
- id TEXT PRIMARY KEY, source_id TEXT NOT NULL REFERENCES source_assets(id) ON DELETE CASCADE,
- page_num INTEGER NOT NULL, text_content TEXT NOT NULL DEFAULT '', verified INTEGER NOT NULL DEFAULT 0,
- UNIQUE(source_id,page_num)
+--> statement-breakpoint
+CREATE INDEX `idx_facts_course_offering` ON `course_facts` (`course_id`,`offering_id`);--> statement-breakpoint
+CREATE TABLE `jobs` (
+	`id` text PRIMARY KEY NOT NULL,
+	`offering_id` text NOT NULL,
+	`created_by_user_id` text NOT NULL,
+	`mode` text NOT NULL,
+	`scope` text NOT NULL,
+	`status` text DEFAULT 'pending' NOT NULL,
+	`preset_version` integer DEFAULT 1 NOT NULL,
+	`source_ids_json` text DEFAULT '[]' NOT NULL,
+	`completed_steps_json` text DEFAULT '[]' NOT NULL,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	FOREIGN KEY (`offering_id`) REFERENCES `offerings`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`created_by_user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action,
+	CONSTRAINT "job_status" CHECK("jobs"."status" IN ('pending','partial','needs_review','complete','failed')),
+	CONSTRAINT "job_sources_json" CHECK(json_valid("jobs"."source_ids_json")),
+	CONSTRAINT "job_steps_json" CHECK(json_valid("jobs"."completed_steps_json"))
 );
-CREATE TABLE IF NOT EXISTS source_chunks (
- id TEXT PRIMARY KEY, source_id TEXT NOT NULL REFERENCES source_assets(id) ON DELETE CASCADE,
- page_num INTEGER, chunk_index INTEGER NOT NULL, text_content TEXT NOT NULL,
- UNIQUE(source_id,chunk_index)
+--> statement-breakpoint
+CREATE TABLE `course_members` (
+	`course_id` text NOT NULL,
+	`user_id` text NOT NULL,
+	`role` text NOT NULL,
+	PRIMARY KEY(`course_id`, `user_id`),
+	FOREIGN KEY (`course_id`) REFERENCES `courses`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action,
+	CONSTRAINT "member_role" CHECK("course_members"."role" IN ('owner','editor','viewer'))
 );
-CREATE INDEX IF NOT EXISTS idx_offerings_course ON offerings(course_id,year,term);
-CREATE INDEX IF NOT EXISTS idx_assets_offering_type ON source_assets(offering_id,source_type);
-CREATE INDEX IF NOT EXISTS idx_chunks_source ON source_chunks(source_id,page_num);
-CREATE TABLE IF NOT EXISTS unit_maps (
- id TEXT PRIMARY KEY, offering_id TEXT NOT NULL REFERENCES offerings(id) ON DELETE CASCADE,
- title TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, status TEXT NOT NULL DEFAULT 'draft',
- mapping_json TEXT NOT NULL CHECK(json_valid(mapping_json)), updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+--> statement-breakpoint
+CREATE TABLE `notes` (
+	`id` text PRIMARY KEY NOT NULL,
+	`offering_id` text NOT NULL,
+	`title` text NOT NULL,
+	`content_markdown` text NOT NULL,
+	`revision` integer DEFAULT 1 NOT NULL,
+	`created_by_user_id` text NOT NULL,
+	`creation_key` text,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	FOREIGN KEY (`offering_id`) REFERENCES `offerings`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`created_by_user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action
 );
-CREATE TABLE IF NOT EXISTS production_presets (
- id TEXT PRIMARY KEY, course_id TEXT REFERENCES courses(id) ON DELETE CASCADE,
- mode TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1,
- settings_json TEXT NOT NULL CHECK(json_valid(settings_json)), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+--> statement-breakpoint
+CREATE INDEX `idx_notes_offering_updated` ON `notes` (`offering_id`,`updated_at`);--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_notes_creation_request` ON `notes` (`offering_id`,`created_by_user_id`,`creation_key`);--> statement-breakpoint
+CREATE TABLE `offerings` (
+	`id` text PRIMARY KEY NOT NULL,
+	`course_id` text NOT NULL,
+	`year` integer NOT NULL,
+	`term` text NOT NULL,
+	`professor` text DEFAULT '' NOT NULL,
+	`section` text DEFAULT '' NOT NULL,
+	`notes` text DEFAULT '' NOT NULL,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	FOREIGN KEY (`course_id`) REFERENCES `courses`(`id`) ON UPDATE no action ON DELETE cascade,
+	CONSTRAINT "offering_year" CHECK("offerings"."year" BETWEEN 1990 AND 2100),
+	CONSTRAINT "offering_term" CHECK("offerings"."term" IN ('1','2','여름','겨울'))
 );
-CREATE TABLE IF NOT EXISTS notes (
- id TEXT PRIMARY KEY, offering_id TEXT NOT NULL REFERENCES offerings(id) ON DELETE CASCADE,
- title TEXT NOT NULL, content_markdown TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1,
- created_by_user_id TEXT NOT NULL REFERENCES users(id),
- created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_offerings_class` ON `offerings` (`course_id`,`year`,`term`,`professor`,`section`);--> statement-breakpoint
+CREATE TABLE `problem_packs` (
+	`id` text PRIMARY KEY NOT NULL,
+	`offering_id` text NOT NULL,
+	`title` text NOT NULL,
+	`body_json` text NOT NULL,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	FOREIGN KEY (`offering_id`) REFERENCES `offerings`(`id`) ON UPDATE no action ON DELETE cascade,
+	CONSTRAINT "pack_json" CHECK(json_valid("problem_packs"."body_json"))
 );
-CREATE TABLE IF NOT EXISTS note_versions (
- note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE, revision INTEGER NOT NULL,
- title TEXT NOT NULL, content_markdown TEXT NOT NULL, source_refs_json TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(source_refs_json)),
- created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(note_id,revision)
+--> statement-breakpoint
+CREATE TABLE `source_pages` (
+	`id` text PRIMARY KEY NOT NULL,
+	`source_id` text NOT NULL,
+	`page_num` integer NOT NULL,
+	`text_content` text DEFAULT '' NOT NULL,
+	`verified` integer DEFAULT 0 NOT NULL,
+	FOREIGN KEY (`source_id`) REFERENCES `source_assets`(`id`) ON UPDATE no action ON DELETE cascade
 );
-CREATE TABLE IF NOT EXISTS problem_packs (
- id TEXT PRIMARY KEY, offering_id TEXT NOT NULL REFERENCES offerings(id) ON DELETE CASCADE,
- title TEXT NOT NULL, body_json TEXT NOT NULL CHECK(json_valid(body_json)),
- created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_pages_source_page` ON `source_pages` (`source_id`,`page_num`);--> statement-breakpoint
+CREATE TABLE `production_presets` (
+	`id` text PRIMARY KEY NOT NULL,
+	`course_id` text,
+	`mode` text NOT NULL,
+	`version` integer DEFAULT 1 NOT NULL,
+	`settings_json` text NOT NULL,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	FOREIGN KEY (`course_id`) REFERENCES `courses`(`id`) ON UPDATE no action ON DELETE cascade,
+	CONSTRAINT "preset_json" CHECK(json_valid("production_presets"."settings_json"))
 );
-CREATE TABLE IF NOT EXISTS jobs (
- id TEXT PRIMARY KEY, offering_id TEXT NOT NULL REFERENCES offerings(id) ON DELETE CASCADE,
- created_by_user_id TEXT NOT NULL REFERENCES users(id), mode TEXT NOT NULL, scope TEXT NOT NULL,
- status TEXT NOT NULL DEFAULT 'pending', preset_version INTEGER NOT NULL DEFAULT 1,
- source_ids_json TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(source_ids_json)),
- completed_steps_json TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(completed_steps_json)),
- updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
- CHECK(status IN ('pending','partial','needs_review','complete','failed'))
+--> statement-breakpoint
+CREATE TABLE `unit_maps` (
+	`id` text PRIMARY KEY NOT NULL,
+	`offering_id` text NOT NULL,
+	`title` text NOT NULL,
+	`version` integer DEFAULT 1 NOT NULL,
+	`status` text DEFAULT 'draft' NOT NULL,
+	`mapping_json` text NOT NULL,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	FOREIGN KEY (`offering_id`) REFERENCES `offerings`(`id`) ON UPDATE no action ON DELETE cascade,
+	CONSTRAINT "unit_map_json" CHECK(json_valid("unit_maps"."mapping_json"))
 );
-CREATE TABLE IF NOT EXISTS job_checkpoints (
- id TEXT PRIMARY KEY, job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
- step TEXT NOT NULL, status TEXT NOT NULL, result_ref TEXT,
- created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
- UNIQUE(job_id,step)
+--> statement-breakpoint
+CREATE TABLE `users` (
+	`id` text PRIMARY KEY NOT NULL,
+	`email` text NOT NULL,
+	`display_name` text,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
-CREATE TABLE IF NOT EXISTS private_attempts (
- id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id),
- pack_id TEXT NOT NULL REFERENCES problem_packs(id), data_json TEXT NOT NULL CHECK(json_valid(data_json)),
- updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+--> statement-breakpoint
+CREATE UNIQUE INDEX `users_email_unique` ON `users` (`email`);--> statement-breakpoint
+CREATE TABLE `note_versions` (
+	`note_id` text NOT NULL,
+	`revision` integer NOT NULL,
+	`title` text NOT NULL,
+	`content_markdown` text NOT NULL,
+	`source_refs_json` text DEFAULT '[]' NOT NULL,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	PRIMARY KEY(`note_id`, `revision`),
+	FOREIGN KEY (`note_id`) REFERENCES `notes`(`id`) ON UPDATE no action ON DELETE cascade,
+	CONSTRAINT "note_refs_json" CHECK(json_valid("note_versions"."source_refs_json"))
 );

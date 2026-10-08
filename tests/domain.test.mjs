@@ -11,3 +11,8 @@ test('text chunks preserve original',()=>{const s='첫 번째 부분입니다.\n
 test('note validation rejects blank',()=>{assert.ok(validateNote({offeringId:'o1',title:' ',content:''}).length);});
 test('job resume is deterministic',()=>{let j={completedSteps:[]};assert.equal(nextStep(j),'context');j=markStep(j,'context');assert.equal(nextStep(j),'sources');for(const s of ['sources','outline','generate','verify','save'])j=markStep(j,s);assert.equal(nextStep(j),'complete');});
 test('HTML display sanitization',()=>{assert.equal(safeText('<img src=x onerror=alert(1)>'),'&lt;img src=x onerror=alert(1)&gt;');});
+
+// Scientific notation must survive text chunking without NFKC flattening.
+test('transcript chunks retain superscripts and Unicode scientific symbols',()=>{
+  assert.equal(splitTranscript('D² / s · μ · ½')[0],'D² / s · μ · ½');
+});
