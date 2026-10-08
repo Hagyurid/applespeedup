@@ -11,7 +11,7 @@ const jsonValue=v=>JSON.stringify(v);
 const parse=v=>JSON.parse(v||'[]');
 const VALID_MODES=new Set(['outline','detailed_note','subnote','exam_paper','exam_cram','exam_trends','transcript_fix','errors','calculator']);
 
-export function createAiPipeline(db){
+export function createAiPipeline(db,bucket=null){
   if(!db?.prepare||!db?.batch)throw Error('D1 database required');
   const q=(sql,...p)=>db.prepare(sql).bind(...p);
   const first=(sql,...p)=>q(sql,...p).first();
@@ -26,7 +26,7 @@ export function createAiPipeline(db){
     return row;
   };
   const source=async(user,sourceId,write=false)=>{
-    const s=await first(`SELECT s.id,s.title,s.source_type,s.offering_id,s.extract_status,o.course_id
+    const s=await first(`SELECT s.id,s.title,s.source_type,s.offering_id,s.extract_status,s.mime_type,o.course_id
       FROM source_assets s JOIN offerings o ON o.id=s.offering_id WHERE s.id=?`,sourceId);
     if(!s)reject('NOT_FOUND');
     await course(user,s.course_id,write);
@@ -40,6 +40,45 @@ export function createAiPipeline(db){
     return run;
   }
   return {
+    async saveSourcePageImage(user,{source_id,page_num,bytes,mime_type}={}){
+      const src=await source(user,source_id,true);
+      if(!bucket?.put||!bucket?.get||!bucket?.delete)reject('STORAGE_NOT_CONFIGURED');
+      if(!Number.isInteger(page_num)||page_num<1||page_num>1000||
+         !(bytes instanceof Uint8Array)||bytes.byteLength<50||bytes.byteLength>1024*1024||
+         !['image/png','image/jpeg'].includes(mime_type))reject('BAD_FILE');
+      const png=bytes.length>8&&bytes[0]===137&&bytes[1]===80&&bytes[2]===78&&bytes[3]===71;
+      const jpeg=bytes.length>3&&bytes[0]===255&&bytes[1]===216&&bytes[2]===255;
+      if(mime_type==='image/png'?!png:!jpeg)reject('BAD_FILE');
+      // The page raster is an input for model vision, NOT the OCR result.
+      const key=`source-pages/${src.course_id}/${source_id}/${page_num}-${uuid()}`;
+      await bucket.put(key,bytes,{httpMetadata:{contentType:mime_type}});
+      try{
+        const old=await first('SELECT storage_key FROM source_page_images WHERE source_id=? AND page_num=?',source_id,page_num);
+        await q(`INSERT INTO source_page_images(source_id,page_num,storage_key,mime_type)
+            VALUES(?,?,?,?)
+            ON CONFLICT(source_id,page_num) DO UPDATE SET storage_key=excluded.storage_key,
+              mime_type=excluded.mime_type,updated_at=CURRENT_TIMESTAMP`,source_id,page_num,key,mime_type).run();
+        if(old?.storage_key && old.storage_key!==key)try{await bucket.delete(old.storage_key)}catch{}
+      }catch(e){try{await bucket.delete(key)}catch{}throw e}
+      return {source_id,page_num,stored:true,mime_type};
+    },
+    async getSourcePageImage(user,{source_id,page_num}={}){
+      await source(user,source_id);
+      if(!Number.isInteger(page_num)||page_num<1||page_num>1000)reject('BAD_REQUEST');
+      if(!bucket?.get)reject('STORAGE_NOT_CONFIGURED');
+      const page=await first('SELECT storage_key,mime_type FROM source_page_images WHERE source_id=? AND page_num=?',source_id,page_num);
+      if(!page)reject('NOT_FOUND');
+      const result=await bucket.get(page.storage_key);
+      if(!result)reject('NOT_FOUND');
+      const raw=new Uint8Array(await new Response(result.body).arrayBuffer());
+      if(raw.length>1024*1024)reject('BAD_FILE');
+      // This MCP content block is a real image for GPT vision, not image metadata.
+      // Keep image bytes only in the tool response, never in D1 or log output.
+      let binary='';
+      for(let offset=0;offset<raw.length;offset+=32768)
+        binary+=String.fromCharCode(...raw.subarray(offset,offset+32768));
+      return {__mcpImage:true,mimeType:page.mime_type,data:btoa(binary),source_id,page_num};
+    },
     async saveReviewedPage(user,{source_id,page_num,recognized_text,corrected_text,evidence_source_ids=[],unresolved=[]}={}){
       const src=await source(user,source_id,true);
       if(!Number.isInteger(page_num)||page_num<1||page_num>1000||

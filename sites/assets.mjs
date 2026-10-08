@@ -5,6 +5,9 @@ const accepted = Object.freeze({
   '.txt': { mime: 'text/plain', ready: true },
   '.md': { mime: 'text/markdown', ready: true },
   '.pdf': { mime: 'application/pdf', ready: false },
+  '.png': { mime: 'image/png', ready: false },
+  '.jpg': { mime: 'image/jpeg', ready: false },
+  '.jpeg': { mime: 'image/jpeg', ready: false },
   '.docx': { mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', ready: false },
   '.pptx': { mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', ready: false },
 });
@@ -29,6 +32,8 @@ export async function storeAsset({bucket,repository,userId,offeringId,file,sourc
   const ext=name.toLowerCase().match(/\.[a-z0-9]+$/)?.[0];
   if(ext==='.pdf' && !new TextDecoder().decode(bytes.subarray(0,5)).startsWith('%PDF-'))error('BAD_FILE');
   if((ext==='.docx'||ext==='.pptx') && !(bytes[0]===0x50&&bytes[1]===0x4b))error('BAD_FILE');
+  if(ext==='.png'&& !(bytes.length>8&&bytes[0]===137&&bytes[1]===80&&bytes[2]===78&&bytes[3]===71))error('BAD_FILE');
+  if((ext==='.jpg'||ext==='.jpeg')&& !(bytes.length>3&&bytes[0]===255&&bytes[1]===216&&bytes[2]===255))error('BAD_FILE');
   const sourceId=crypto.randomUUID();
   const key=`sources/${offeringId}/${sourceId}`;
   const digest=await contentHash(bytes);

@@ -21,7 +21,7 @@ const decode=(b)=>JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(b));
 function statusOf(err){if(['FORBIDDEN'].includes(err?.code))return 403;if(err?.code==='NOT_FOUND')return 404;if(err?.code==='REVISION_CONFLICT')return 409;if(err?.code==='REVIEW_INCOMPLETE'||err?.code==='OUTLINE_REQUIRED')return 422;if(['BAD_REQUEST','BAD_FILE'].includes(err?.code))return 400;return 500;}
 export function createHttpHandler({db,bucket,authenticate,allowedOrigin}={}){
   if(!db||typeof authenticate!=='function')throw Error('Verified authentication and a D1 binding are required');
-  const repo={...createD1Repository(db),...createAiPipeline(db)};
+  const repo={...createD1Repository(db),...createAiPipeline(db,bucket)};
   return async function handle(request){
     const url=new URL(request.url),method=request.method;
     if(url.pathname==='/health'&&method==='GET')return json({status:'ready',service:'aplus-accelerator',backend:'configured'});
@@ -75,6 +75,16 @@ export function createHttpHandler({db,bucket,authenticate,allowedOrigin}={}){
           offeringId:request.headers.get('x-offering-id'),sourceType:request.headers.get('x-source-type'),
           title:decodeURIComponent(request.headers.get('x-source-title')||''),provenance:decodeURIComponent(request.headers.get('x-source-provenance')||''),weeks,exam_year});
         return json(result,201);
+      }
+      if(method==='POST'&&url.pathname==='/api/ai/source-page-image'){
+        const mime_type=request.headers.get('content-type')||'';
+        if(!['image/png','image/jpeg'].includes(mime_type))return fail(415,'PNG/JPEG image required');
+        const source_id=request.headers.get('x-source-id')||'';
+        const page_num=Number(request.headers.get('x-page-num'));
+        if(!source_id||!Number.isInteger(page_num)||page_num<1||page_num>1000)return fail(400,'Invalid source page');
+        const bytes=await readBody(request,1024*1024);
+        if(!bytes)return fail(413,'Preview image too large');
+        return json(await repo.saveSourcePageImage(userId,{source_id,page_num,bytes,mime_type}),201);
       }
       if(method==='GET'&&url.pathname==='/api/ai/progress')return json(await repo.getGenerationProgress(userId,{run_id:url.searchParams.get('run_id')}));
       if(method==='GET'&&url.pathname==='/api/ai/reviewed-page')return json(await repo.getReviewedPage(userId,{source_id:url.searchParams.get('source_id'),page_num:Number(url.searchParams.get('page_num'))}));

@@ -82,11 +82,11 @@
                 </div>
                 <label class="field" id="examYearField" hidden>기출 연도 (선택)<input id="examYear" type="number" min="1900" max="2100" placeholder="예: 2024"></label>
                 <label class="field">전사본 입력<textarea id="transcript" rows="6" placeholder="녹음 파일이 아닌 전사된 텍스트를 붙여넣으세요."></textarea></label>
-                <label class="field file-field">원본 파일 (TXT·MD·PDF·DOCX·PPTX)<input id="sourceFile" type="file" accept=".txt,.md,.pdf,.docx,.pptx"></label>
+                <label class="field file-field">원본 파일 (TXT·MD·PDF·DOCX·PPTX·PNG·JPG)<input id="sourceFile" type="file" accept=".txt,.md,.pdf,.docx,.pptx,.png,.jpg,.jpeg"></label>
                 <label class="field">출처·참고 연도<input id="provenance" maxlength="400" placeholder="2025 기출, 수업 자료 등"></label>
                 <button class="primary action-button" type="submit">자료 저장</button>
               </form>
-              <p class="hint">TXT·MD는 등록 즉시 검색할 수 있습니다. PDF·DOCX·PPTX는 원본만 보관하며, OCR/텍스트 추출 기능이 연결되기 전까지는 '추출 대기'로 표시됩니다.</p>
+              <p class="hint">TXT·MD는 등록 즉시 검색할 수 있습니다. PNG·JPG는 AI 분석을 위해 페이지 이미지를 준비합니다. PDF·DOCX·PPTX는 현재 원본만 저장하며, ChatGPT 이미지 전달을 위한 페이지 변환 기능은 추가 개발 중입니다.</p>
             </section>
 
             <section class="card workspace-card library-card">

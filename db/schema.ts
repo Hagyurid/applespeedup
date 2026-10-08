@@ -119,3 +119,11 @@ export const aiGenerationSections = sqliteTable('ai_generation_sections', {
   content: text('content_markdown').notNull(),
   createdAt: timestamp('created_at'),
 }, t => [primaryKey({ columns: [t.runId, t.sectionIndex] })]);
+
+export const sourcePageImages = sqliteTable('source_page_images', {
+  sourceId: text('source_id').notNull().references(() => assets.id, { onDelete: 'cascade' }),
+  pageNum: integer('page_num').notNull(),
+  storageKey: text('storage_key').notNull(),
+  mimeType: text('mime_type').notNull(),
+  updatedAt: timestamp('updated_at'),
+}, t => [primaryKey({ columns: [t.sourceId, t.pageNum] })]);

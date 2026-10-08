@@ -38,6 +38,28 @@ const json=data=>({method:'POST',headers:{'Content-Type':'application/json'},bod
 const opt=(select,items,label)=>{select.replaceChildren();for(const x of items)select.add(new Option(label(x),x.id));};
 const empty=text=>{const li=document.createElement('li');li.textContent=text;return li;};
 const types={transcript:'전사본',lecture_slides:'강의자료',past_exam:'기출·시험자료',textbook:'교재·참고자료',exam_trend:'기출 경향',syllabus:'강의계획서',other:'기타'};
+async function createPagePreview(file){
+  if(!/image\\/(png|jpeg)/.test(file.type))return null;
+  const url=URL.createObjectURL(file),image=new Image();
+  try{
+    image.src=url;
+    await image.decode();
+    const ratio=Math.min(1,1600/Math.max(image.naturalWidth,image.naturalHeight));
+    let width=Math.max(1,Math.round(image.naturalWidth*ratio));
+    let height=Math.max(1,Math.round(image.naturalHeight*ratio));
+    const canvas=document.createElement('canvas');
+    for(let attempt=0;attempt<5;attempt++){
+      canvas.width=width;canvas.height=height;
+      const ctx=canvas.getContext('2d');if(!ctx)throw Error('이미지 미리보기를 만들 수 없습니다.');
+      ctx.fillStyle='#fff';ctx.fillRect(0,0,width,height);
+      ctx.drawImage(image,0,0,width,height);
+      const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.83));
+      if(blob&&blob.size>=50&&blob.size<=1024*1024)return blob;
+      width=Math.max(1,Math.floor(width*.8));height=Math.max(1,Math.floor(height*.8));
+    }
+    throw Error('이미지를 OCR 전송용으로 압축하지 못했습니다.');
+  }finally{URL.revokeObjectURL(url);}
+}
 const sourceWeeks=()=>[...document.querySelectorAll('#weeksGrid input:checked')].map(el=>Number(el.value));
 const updateWeeksSummary=()=>{$('weeksSummary').textContent=sourceWeeks().length?`선택: ${sourceWeeks().join(', ')}주차`:'주차 미지정 · 선택해서 변경';};
 function syncSourceMetadataFields(){
@@ -134,6 +156,14 @@ $('source-form').onsubmit=e=>{e.preventDefault();run(async()=>{
   if(file){if(file.size>8*1024*1024)throw Error('최대 8 MiB까지 등록할 수 있습니다.');
     const headers={'Content-Type':'application/octet-stream','X-Offering-Id':o.id,'X-Source-Type':type,'X-Source-Title':encodeURIComponent(name),'X-Source-Provenance':encodeURIComponent(provenance),'X-File-Name':encodeURIComponent(file.name),'X-Source-Weeks':JSON.stringify(weeks),...(exam_year!==null?{'X-Exam-Year':String(exam_year)}:{})};
     r=await call('/api/assets',{method:'POST',headers,body:file});
+    if(/image\\/(png|jpeg)/.test(file.type)){
+      const preview=await createPagePreview(file);
+      if(preview){
+        const imageResult=await call('/api/ai/source-page-image',{method:'POST',
+          headers:{'Content-Type':'image/jpeg','X-Source-Id':r.source_id,'X-Page-Num':'1'},body:preview});
+        if(!imageResult.stored)throw Error('원본은 저장되었으나 이미지 전달 준비가 완료되지 않았습니다.');
+      }
+    }
   }else{if(type!=='transcript')throw Error('전사본 직접 입력 외에는 원본 파일을 선택하세요.');
     r=await call('/api/transcripts',json({offering_id:o.id,title:name,text:$('transcript').value,provenance,weeks,exam_year}));}
   $('source-form').reset();for(const el of $('weeksGrid').querySelectorAll('input'))el.checked=false;syncSourceMetadataFields();await refreshOfferingData();if(r.metadata_updated)fail('동일 파일이 있어 기존 자료의 제목·주차/연도 정보를 입력한 값으로 갱신했습니다.');else if(r.reused)fail('동일 내용의 기존 자료를 재사용했습니다.');
