@@ -42,7 +42,7 @@ node --test tests/*.test.mjs
 3. 로컬 프로토타입은 TXT, MD, CSV 파일 텍스트 또는 직접 붙여 넣은 전사본을 처리한다. PDF/DOCX/PPTX는 파일명·메타데이터만 등록하며 원문 추출은 추후 구현·검증 사항이다. 브라우저 프로토타입에서 PDF 원본 바이너리를 영구 저장하지 않는다.
 4. Word OMML, PDF 출력, SolvePad 및 CASIO 정식 화면은 이번 단계 범위 밖이다.
 5. 브라우저의 로컬 저장소는 다중 사용자 공유·서버측 개인정보 권한 분리를 제공하지 않는다. Sites 배포 시 공식 인증/권한 정책 검증이 필수다.
-6. Render DB 및 업로드 파일은 여기에 포함되어 있지 않다. **기존 Render를 해지하지 말 것.**
+6. 기존 Render 운영 데이터 백업·이전은 사용자 요청으로 **범위 제외**. 새 서비스는 빈 데이터로 시작한다.
 7. GPT 요청을 복사하는 것과 실제 ChatGPT가 플러그인을 실행하는 것은 별개다. 요청문만으로 서버에 자동 저장되지 않는다.
 
 ## 주요 폴더
@@ -51,8 +51,8 @@ node --test tests/*.test.mjs
 - `sites/`: D1 SQL, 보안 검증 D1 리포지토리, MCP JSON-RPC 코어 + HTTP 전송·R2 어댑터 (실제 인증/배포 전 연결 필요)
 - `plugin/skills/`: ChatGPT 용 Skill 지침
 - `tests/`: 도메인 로직, MCP 코어, SQLite 기반 D1 리포지토리 통합 테스트
-- `docs/`: 아키텍처, QA, 마이그레이션 및 Sites 인계 계획
-- `backups/`: Render 데이터 백업 작업 안내(실제 백업 데이터 없음)
+- `docs/`: 아키텍처, QA, 신규 설치 및 Sites 인계 계획
+- `backups/`: 과거 백업 항목의 제외 안내
 
 ## 참고 출처
 - 기존 시스템: https://github.com/Hagyurid/study
