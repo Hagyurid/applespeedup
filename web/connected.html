@@ -149,7 +149,7 @@
           </div>
           <div class="page-grid notes-layout">
             <section class="card workspace-card note-list-card">
-              <div class="card-heading"><div><span class="step-number">01</span><h2>정리본 목록</h2></div><button type="button" id="noteNew" class="ghost small">새 정리본</button></div>
+              <div class="card-heading"><div><span class="step-number">01</span><h2>정리본 목록</h2></div><button type="button" id="noteRestoreDraft" class="ghost small" hidden>기기 초안 복구</button><button type="button" id="noteNew" class="ghost small">새 정리본</button></div>
               <ul id="noteList" class="compact-list"></ul>
             </section>
             <section class="card workspace-card note-editor-card">
@@ -185,7 +185,7 @@
               <div class="solve-heading"><div><span id="solveNumber" class="eyebrow"></span><h2 id="solveQuestionTitle"></h2></div><span id="solveSaveStatus" role="status">저장 대기</span></div>
               <div id="solvePrompt" class="solve-prompt"></div>
               <div id="solveChoices" class="solve-choices"></div>
-              <div class="solve-actions"><button id="solveCorrect" class="ghost small" type="button" aria-pressed="false">정답 기록</button><button id="solveWrong" class="ghost small" type="button" aria-pressed="false">오답 기록</button><button id="solveUnmarked" class="ghost small" type="button" aria-pressed="true">기록 해제</button><button id="solveHint" class="ghost small" type="button">힌트</button><button id="solveSolution" class="ghost small" type="button">해설 보기</button><button id="solveBookmark" class="ghost small" type="button" aria-pressed="false">북마크</button></div>
+              <div class="solve-actions"><button id="solveCorrect" class="ghost small" type="button" aria-pressed="false">정답 기록</button><button id="solveWrong" class="ghost small" type="button" aria-pressed="false">오답 기록</button><button id="solveReload" class="ghost small" type="button" hidden>최신 풀이 불러오기</button><button id="solveRestoreDraft" class="ghost small" type="button" hidden>기기 초안 복구</button><button id="solveUnmarked" class="ghost small" type="button" aria-pressed="true">기록 해제</button><button id="solveHint" class="ghost small" type="button">힌트</button><button id="solveSolution" class="ghost small" type="button">해설 보기</button><button id="solveBookmark" class="ghost small" type="button" aria-pressed="false">북마크</button></div>
               <div id="solveFeedback" class="solve-feedback" role="status" hidden></div>
               <div id="solveReveal" class="solve-reveal" hidden></div>
               <div class="solve-paper-head"><strong>풀이 필기</strong><span id="solvePageLabel"></span></div>

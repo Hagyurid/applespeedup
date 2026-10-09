@@ -2,8 +2,9 @@ import {legacyEquationTex} from '../domain/note-math.mjs';
 import {compactNoteIntroduction} from '../domain/note-presentation.mjs';
 /** Safe study-note preview. Markdown syntax becomes DOM nodes, never raw HTML. */
 const katex=import('/vendor/katex/katex.mjs').catch(()=>null);
-let mathTasks=[];
-export async function noteMathReady(){await Promise.all(mathTasks);}
+const mathTasks=new Set();
+function trackMath(task){mathTasks.add(task);task.then(()=>mathTasks.delete(task),()=>mathTasks.delete(task));}
+export async function noteMathReady(){await Promise.all([...mathTasks]);}
 const el=(tag,text)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;return node;};
 function inline(target,text){
   const tokens=/(\$\$([^$]+)\$\$|\$([^$\n]+)\$|\*\*([^*]+)\*\*|==([^=]+)==|`([^`]+)`)/g;
@@ -13,19 +14,19 @@ function inline(target,text){
     if(match[2]||match[3]){
       const tex=match[2]||match[3],display=!!match[2];
       const span=el('span',tex);span.className=display?'note-math display':'note-math';target.append(span);
-      mathTasks.push(katex.then(lib=>{if(lib&&span.isConnected)lib.render(tex,span,{throwOnError:false,trust:false,displayMode:display});}));
+      trackMath(katex.then(lib=>{if(lib&&span.isConnected)lib.render(tex,span,{throwOnError:false,trust:false,displayMode:display});}));
     }else if(match[4]){const strong=el('strong');inline(strong,match[4]);target.append(strong);}
     else if(match[5])target.append(el('mark',match[5]));
     else if(legacyEquationTex(match[6])){
       const matchValue=match[6],tex=legacyEquationTex(matchValue);const span=el('span',tex);span.className='note-math';target.append(span);
-      mathTasks.push(katex.then(lib=>{if(lib&&span.isConnected){try{lib.render(tex,span,{throwOnError:true,trust:false,displayMode:false});}catch{span.replaceWith(el('code',matchValue));}}}));
+      trackMath(katex.then(lib=>{if(lib&&span.isConnected){try{lib.render(tex,span,{throwOnError:true,trust:false,displayMode:false});}catch{span.replaceWith(el('code',matchValue));}}}));
     }else target.append(el('code',match[6]));
     cursor=tokens.lastIndex;
   }
   if(cursor<text.length)target.append(document.createTextNode(text.slice(cursor)));
 }
 export function renderNoteMarkdown(target,markdown,{compactIntroduction=true,pageBreaks=true}={}){
-  mathTasks=[];target.replaceChildren();const lines=(compactIntroduction?compactNoteIntroduction(markdown):String(markdown||'')).replace(/\\\(/g,'$').replace(/\\\)/g,'$').replace(/\\\[/g,()=> '$$').replace(/\\\]/g,()=> '$$').replace(/\r\n?/g,'\n').split('\n');
+  target.replaceChildren();const lines=(compactIntroduction?compactNoteIntroduction(markdown):String(markdown||'')).replace(/\\\(/g,'$').replace(/\\\)/g,'$').replace(/\\\[/g,()=> '$$').replace(/\\\]/g,()=> '$$').replace(/\r\n?/g,'\n').split('\n');
   let i=0;
   while(i<lines.length){
     const line=lines[i];if(!line.trim()){i++;continue}
@@ -38,7 +39,7 @@ export function renderNoteMarkdown(target,markdown,{compactIntroduction=true,pag
     if(line.trim()==='$$'){
       const tex=[];i++;while(i<lines.length&&lines[i].trim()!=='$$')tex.push(lines[i++]);if(i<lines.length)i++;
       const block=el('div',tex.join('\n'));block.className='note-math display';target.append(block);
-      mathTasks.push(katex.then(lib=>{if(lib)lib.render(tex.join('\n'),block,{throwOnError:false,trust:false,displayMode:true});}));continue;
+      trackMath(katex.then(lib=>{if(lib)lib.render(tex.join('\n'),block,{throwOnError:false,trust:false,displayMode:true});}));continue;
     }
     if(/^```/.test(line)){
       const code=[];i++;
@@ -50,13 +51,24 @@ export function renderNoteMarkdown(target,markdown,{compactIntroduction=true,pag
     if(heading){const h=el('h'+heading[1].length);inline(h,heading[2]);target.append(h);i++;continue;}
     if(/^\s*\|/.test(line)&&i+1<lines.length&&/^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i+1])&&lines[i+1].includes('-')){
       const table=el('table'),head=el('thead'),body=el('tbody');
-      const cells=row=>row.trim().replace(/^\||\|$/g,'').split('|').map(x=>x.trim());
+      const cells=row=>{
+        const text=row.trim().replace(/^\||\|$/g,'');const result=[];let value='',math=false,code=false;
+        for(let j=0;j<text.length;j++){
+          const ch=text[j];
+          if(ch==='\\'&&text[j+1]==='|'){value+='|';j++;continue;}
+          if(ch==='\\'&&j+1<text.length){value+=ch+text[++j];continue;}
+          if(ch==='`'&&!math)code=!code;
+          if(ch==='$'&&!code){math=!math;if(text[j+1]==='$'){value+='$$';j++;continue;}}
+          if(ch==='|'&&!math&&!code){result.push(value.trim());value='';}else value+=ch;
+        }
+        result.push(value.trim());return result;
+      };
       const tr=el('tr');for(const value of cells(line)){const th=el('th');inline(th,value);tr.append(th)}head.append(tr);i+=2;
       while(i<lines.length&&/^\s*\|/.test(lines[i])){const row=el('tr');for(const value of cells(lines[i++])){const td=el('td');inline(td,value);row.append(td)}body.append(row)}
       table.append(head,body);const wrap=el('div');wrap.className='note-table-wrap';wrap.append(table);target.append(wrap);continue;
     }
     const list=/^\s*([-*]|\d+\.)\s+(.+)$/.exec(line);
-    if(list){const ordered=/\d/.test(list[1]),group=el(ordered?'ol':'ul');
+    if(list){const ordered=/\d/.test(list[1]),group=el(ordered?'ol':'ul');if(ordered)group.setAttribute('start',String(parseInt(list[1],10)));
       while(i<lines.length){const item=/^\s*([-*]|\d+\.)\s+(.+)$/.exec(lines[i]);if(!item||/\d/.test(item[1])!==ordered)break;const li=el('li');inline(li,item[2]);group.append(li);i++}target.append(group);continue;
     }
     if(/^>\s?/.test(line)){const quote=el('blockquote');while(i<lines.length&&/^>\s?/.test(lines[i])){const p=el('p');inline(p,lines[i++].replace(/^>\s?/,''));quote.append(p)}target.append(quote);continue;}

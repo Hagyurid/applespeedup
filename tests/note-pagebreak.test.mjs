@@ -5,7 +5,7 @@ class Node{
  constructor(tag,text=''){this.tagName=tag;this.textContent=text;this.childNodes=[];this.className='';}
  append(...nodes){this.childNodes.push(...nodes);}
  replaceChildren(...nodes){this.childNodes=nodes;}
- setAttribute(){}
+ setAttribute(key,value){this[key]=value;}
  get lastChild(){return this.childNodes.at(-1);}
 }
 test('print breaks preserve content, avoid empty pages and stay literal inside code blocks',()=>{
@@ -20,4 +20,11 @@ test('print breaks preserve content, avoid empty pages and stay literal inside c
   renderNoteMarkdown(target,'```\n<!-- pagebreak -->\n```',{compactIntroduction:false});
   assert.equal(target.childNodes[0].tagName,'pre');assert.equal(target.childNodes[0].childNodes[0].textContent,'<!-- pagebreak -->');
  }finally{globalThis.document=previous;}
+});
+
+test('table math and escaped pipes stay in their cells and numbered lists retain start',()=>{
+ const previous=globalThis.document;globalThis.document={createElement:tag=>new Node(tag),createTextNode:text=>new Node('#text',text)};
+ try{const target=new Node('article');renderNoteMarkdown(target,'| 식 | 설명 |\n| --- | --- |\n| $|x|$ | a\\|b |\n\n5. 다섯째\n6. 여섯째',{compactIntroduction:false});
+ const row=target.childNodes[0].childNodes[0].childNodes[1].childNodes[0];assert.equal(row.childNodes.length,2);assert.equal(row.childNodes[0].childNodes[0].textContent,'|x|');assert.equal(row.childNodes[1].childNodes[0].textContent,'a|b');assert.equal(target.childNodes[1].start,'5');
+ }finally{globalThis.document=previous}
 });

@@ -328,3 +328,11 @@ SELECT id,revision,title,content_markdown,updated_at FROM course_documents;
 UPDATE course_generation_jobs SET document_revision=COALESCE((SELECT revision FROM course_documents WHERE id=document_id),0);
 
 ALTER TABLE course_generation_jobs ADD COLUMN generation_options_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(generation_options_json));
+
+ALTER TABLE course_attempts ADD COLUMN revision INTEGER NOT NULL DEFAULT 1;
+--> statement-breakpoint
+ALTER TABLE course_material_page_images ADD COLUMN text_ready INTEGER NOT NULL DEFAULT 0;
+--> statement-breakpoint
+UPDATE course_material_page_images SET text_ready=1 WHERE extracted_text<>'';
+--> statement-breakpoint
+ALTER TABLE courses ADD COLUMN deletion_pending INTEGER NOT NULL DEFAULT 0;

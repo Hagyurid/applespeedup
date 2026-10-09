@@ -1,3 +1,4 @@
+import {createDraftStore} from './local-drafts.js';
 import {renderNoteMarkdown,noteMathReady} from './note-render.js';
 /** Native course-owned SolvePad. The server stores each user's answer and ink. */
 const $=id=>document.getElementById(id);
@@ -24,30 +25,52 @@ export function createSolvePad({call,json,notify,onError}){
   const s={packId:null,pack:null,questions:[],index:0,pageIndex:0,attempts:new Map(),
     pages:[[]],answer:'',result:'',bookmarked:false,tool:'pen',stroke:null,pointer:null,
     dirty:false,timer:null,saving:Promise.resolve(),writable:false,loadToken:0,hintIndex:0};
+  let drafts=createDraftStore(null),pending=null,transitioning=false,change=0,conflicted=false;
+  let transitionDone=Promise.resolve();
+  const revisions=new Map();
+  const draftKey=()=>`ink:${s.packId}:${key()}`;
   const key=()=>s.questions[s.index]?.id;
   function status(text){$('solveSaveStatus').textContent=text;}
   function snapshot(){return {pack_id:s.packId,question_id:asText(key()),answer:s.answer,
-    strokes:s.pages,result:s.result,bookmarked:s.bookmarked};}
+    strokes:structuredClone(s.pages),result:s.result,bookmarked:s.bookmarked};}
   function markDirty(){
-    if(!s.writable)return;
-    s.dirty=true;status('저장 중…');
+    if(!s.writable||transitioning)return;
+    change++;s.dirty=true;drafts.write(draftKey(),{...snapshot(),base_revision:revisions.get(asText(key()))||0});status('저장 중…');
     clearTimeout(s.timer);s.timer=setTimeout(()=>{void flush().catch(e=>onError('풀이 저장 실패: '+e.message));},650);
   }
   async function flush(){
     clearTimeout(s.timer);
+    if(pending){await pending;if(s.dirty)return flush();return;}
     if(!s.dirty||!s.packId||!key()||!s.writable)return;
-    const payload=snapshot();s.dirty=false;
-    s.saving=s.saving.catch(()=>{}).then(()=>call('/api/v2/attempt',json(payload)));
-    try{
-      await s.saving;
-      s.attempts.set(payload.question_id,{...payload});
-      if(s.packId===payload.pack_id&&key()===payload.question_id)status('사이트에 저장됨');
-    }catch(e){s.dirty=true;status('저장 실패 · 다시 시도');throw e}
+    if(conflicted)throw Error('최신 풀이를 먼저 불러오세요. 기기 초안은 보존됩니다.');
+    const payload=snapshot(),version=change;
+    payload.expected_revision=revisions.get(payload.question_id)||0;
+    const task=(async()=>{
+      try{
+        const saved=await call('/api/v2/attempt',json(payload));
+        const revision=saved.revision??payload.expected_revision+1;
+        revisions.set(payload.question_id,revision);s.attempts.set(payload.question_id,{...payload});
+        if(change===version){s.dirty=false;drafts.remove(draftKey());status('사이트에 저장됨');}
+        else drafts.write(draftKey(),{...snapshot(),base_revision:revision});
+      }catch(e){s.dirty=true;conflicted=e.status===409;$('solveReload').hidden=!conflicted;status('저장 실패 · 기기 초안 보존');throw e;}
+    })();
+    pending=task;try{await task;}finally{pending=null;}
+  }
+  const controls=['solveCorrect','solveWrong','solveUnmarked','solveBookmark','solvePen','solveErase','solveWidth','solveUndo','solveClear','solveAddPage','solveRestoreDraft'];
+  function updateWritable(){for(const id of controls)$(id).disabled=!s.writable||transitioning;}
+  async function transition(fn){
+    if(transitioning){await transitionDone;return transition(fn);}
+    let unlock;transitionDone=new Promise(resolve=>{unlock=resolve});
+    // Commit an active pen stroke before locking the old question.
+    if(s.stroke){s.pages[s.pageIndex].push(s.stroke);s.stroke=null;s.pointer=null;markDirty();}
+    transitioning=true;updateWritable();
+    try{await flush();return await fn();}finally{transitioning=false;updateWritable();unlock();}
   }
   function current(){return s.questions[s.index]}
   function loadAttempt(){
     const a=s.attempts.get(asText(key()))||{};
-    s.pages=Array.isArray(a.strokes)&&a.strokes.length&&a.strokes.every(Array.isArray)?a.strokes:[[]];
+    s.pages=Array.isArray(a.strokes)&&a.strokes.length&&a.strokes.every(Array.isArray)?structuredClone(a.strokes):[[]];
+    $('solveRestoreDraft').hidden=!drafts.read(draftKey());
     s.pageIndex=0;s.answer=asText(a.answer);s.result=asText(a.result);s.bookmarked=!!a.bookmarked;s.dirty=false;s.hintIndex=0;
   }
   function page(){return s.pages[s.pageIndex]}
@@ -92,14 +115,14 @@ export function createSolvePad({call,json,notify,onError}){
   }
   function erase(p){const before=page().length;s.pages[s.pageIndex]=page().filter(stroke=>!near(stroke,p));if(before!==page().length){redraw();markDirty()}}
   canvas.addEventListener('pointerdown',e=>{
-    if(!s.pack||!s.writable||e.button!==0)return;
+    if(!s.pack||!s.writable||transitioning||e.button!==0)return;
     e.preventDefault();canvas.setPointerCapture(e.pointerId);s.pointer=e.pointerId;
     const p=position(e);
     if(s.tool==='erase')erase(p);
     else{s.stroke={color:'#263345',width:Number($('solveWidth').value)||4,points:[p]};redraw();}
   });
   canvas.addEventListener('pointermove',e=>{
-    if(e.pointerId!==s.pointer)return;e.preventDefault();
+    if(transitioning||e.pointerId!==s.pointer)return;e.preventDefault();
     const events=e.getCoalescedEvents?.()||[e];
     for(const event of events){
       const p=position(event);
@@ -109,7 +132,7 @@ export function createSolvePad({call,json,notify,onError}){
     redraw();
   });
   const finish=e=>{
-    if(e.pointerId!==s.pointer)return;e.preventDefault();
+    if(transitioning||e.pointerId!==s.pointer)return;e.preventDefault();
     if(s.stroke){page().push(s.stroke);s.stroke=null;markDirty();}
     s.pointer=null;redraw();
   };
@@ -159,7 +182,8 @@ export function createSolvePad({call,json,notify,onError}){
   }
   async function open(index){
     if(index<0||index>=s.questions.length||index===s.index)return;
-    await flush();s.index=index;loadAttempt();await renderQuestion();
+    const packId=s.packId;
+    return transition(async()=>{if(s.packId!==packId||index>=s.questions.length)return;s.index=index;loadAttempt();await renderQuestion();});
   }
   const visibleIndices=()=>s.questions.map((q,index)=>({q,index})).filter(({q,index})=>{
     const a=index===s.index?{result:s.result,bookmarked:s.bookmarked}:s.attempts.get(asText(q.id))||{};
@@ -201,7 +225,7 @@ export function createSolvePad({call,json,notify,onError}){
     $('solveFeedback').className='solve-feedback '+s.result;
   }
   function recordResult(result){
-    if(!s.writable||!current())return;
+    if(!s.writable||transitioning||!current())return;
     s.result=result;markDirty();renderResult();renderList();
   }
   $('solveCorrect').onclick=()=>recordResult('correct');
@@ -218,27 +242,51 @@ export function createSolvePad({call,json,notify,onError}){
     const h=document.createElement('h3');h.textContent='해설';box.append(h);
     const q=current(),answer=document.createElement('div'),p=document.createElement('div');box.append(answer,p);void renderPrompt(answer,'**정답**\n\n'+asText(q.answer?.displayMd??answerText(q)));void renderPrompt(p,solutionText(q));
   };
+  $('solveReload').onclick=async()=>{
+    if(transitioning||!s.packId)return;
+    if(!globalThis.confirm('기기 초안을 보관하고 사이트의 최신 풀이를 불러올까요?'))return;
+    const wasDirty=s.dirty;
+    s.dirty=false;
+    try{await transition(async()=>{
+      const rows=await call('/api/v2/attempts?pack_id='+encodeURIComponent(s.packId));
+      s.attempts=new Map(rows.map(row=>[asText(row.question_id),attemptData(row)]));revisions.clear();for(const row of rows)revisions.set(asText(row.question_id),row.revision||1);
+      conflicted=false;$('solveReload').hidden=true;loadAttempt();await renderQuestion();
+    });}catch(e){s.dirty=wasDirty;onError(e.message);}
+  };
+  $('solveRestoreDraft').onclick=()=>{
+    if(!s.writable||transitioning)return;
+    const draft=drafts.read(draftKey());if(!draft)return;
+    if(!globalThis.confirm('기기에 남은 풀이 초안을 불러올까요? 현재 풀이 대신 초안을 저장하게 됩니다.'))return;
+    s.pages=structuredClone(draft.strokes||[[]]);s.pageIndex=0;s.answer=asText(draft.answer);s.result=asText(draft.result);s.bookmarked=!!draft.bookmarked;
+    markDirty();void renderQuestion();$('solveRestoreDraft').hidden=true;
+  };
+  globalThis.window?.addEventListener('pagehide',()=>{
+    if(s.packId&&(s.dirty||s.stroke)){
+      const data=snapshot();if(s.stroke)data.strokes[s.pageIndex].push(structuredClone(s.stroke));
+      drafts.write(draftKey(),{...data,base_revision:revisions.get(asText(key()))||0});
+    }
+  });
   return {
     async load(id,record){
-      await flush();
-      if(!record?.pack||!Array.isArray(record.pack.questions)||!record.pack.questions.length)throw Error('문제가 없는 문제팩입니다.');
-      s.packId=id;s.pack=record.pack;s.questions=record.pack.questions;s.index=0;
-      const attempts=await call('/api/v2/attempts?pack_id='+encodeURIComponent(id));
-      s.attempts=new Map(attempts.map(row=>[asText(row.question_id),attemptData(row)]));
-      $('solvePackTitle').textContent=record.title||record.pack.title||'문제팩';
-      $('solveCount').textContent=s.questions.length+'문제';
-      $('solveEmpty').hidden=true;$('solveWorkspace').hidden=false;
-      loadAttempt();await renderQuestion();notify('문제팩을 열었습니다.');
+      return transition(async()=>{
+        if(!record?.pack||!Array.isArray(record.pack.questions)||!record.pack.questions.length)throw Error('문제가 없는 문제팩입니다.');
+        // Do not switch either the visible problem or save target on a failed fetch.
+        const attempts=await call('/api/v2/attempts?pack_id='+encodeURIComponent(id));
+        const nextAttempts=new Map(attempts.map(row=>[asText(row.question_id),attemptData(row)]));
+        revisions.clear();for(const row of attempts)revisions.set(asText(row.question_id),row.revision||1);
+        s.packId=id;s.pack=record.pack;s.questions=record.pack.questions;s.index=0;s.attempts=nextAttempts;
+        $('solvePackTitle').textContent=record.title||record.pack.title||'문제팩';
+        $('solveCount').textContent=s.questions.length+'문제';
+        $('solveEmpty').hidden=true;$('solveWorkspace').hidden=false;
+        loadAttempt();await renderQuestion();notify('문제팩을 열었습니다.');
+      });
     },
-    async reset(){
-      await flush();s.packId=null;s.pack=null;s.questions=[];s.attempts.clear();s.dirty=false;
+    async reset(){return transition(async()=>{
+      s.packId=null;s.pack=null;s.questions=[];s.attempts.clear();revisions.clear();s.dirty=false;
       $('solveEmpty').hidden=false;$('solveWorkspace').hidden=true;
-    },
-    setWritable(value){
-      s.writable=!!value;
-      for(const id of ['solveCorrect','solveWrong','solveUnmarked','solveBookmark','solvePen','solveErase','solveWidth','solveUndo','solveClear','solveAddPage'])$(id).disabled=!s.writable;
-      redraw();
-    },
+    });},
+    setStorageUser(userId){drafts=createDraftStore(userId,onError);},
+    setWritable(value){s.writable=!!value;updateWritable();redraw();},
     flush
   };
 }

@@ -57,6 +57,13 @@
       "when": 1791621000000,
       "tag": "0007_generation_options",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1791662200000,
+      "tag": "0008_save_safety",
+      "breakpoints": true
     }
   ]
 }

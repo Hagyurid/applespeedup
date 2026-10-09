@@ -30,12 +30,13 @@ async function read(request,max){
 }
 export function createCourseLibrary(db,bucket){
  if(!db?.prepare||!db?.batch)throw Error('D1 binding required');
+ const originalCache=new Map();
  const q=(sql,...args)=>db.prepare(sql).bind(...args);
  const one=(sql,...args)=>q(sql,...args).first();
  const all=async(sql,...args)=>(await q(sql,...args).all()).results||[];
  async function access(user,course_id,write=false){
   if(!user||!course_id)fail('FORBIDDEN');
-  const row=await one("SELECT c.id,c.owner_user_id,m.role FROM courses c LEFT JOIN course_members m ON m.course_id=c.id AND m.user_id=? WHERE c.id=? AND (c.owner_user_id=? OR m.user_id=?)",user,course_id,user,user);
+  const row=await one("SELECT c.id,c.owner_user_id,m.role FROM courses c LEFT JOIN course_members m ON m.course_id=c.id AND m.user_id=? WHERE c.id=? AND c.deletion_pending=0 AND (c.owner_user_id=? OR m.user_id=?)",user,course_id,user,user);
   if(!row)fail('NOT_FOUND');
   if(write&&row.owner_user_id!==user&&!['owner','editor'].includes(row.role))fail('FORBIDDEN');
   return row;
@@ -57,7 +58,7 @@ export function createCourseLibrary(db,bucket){
    return {...document,id,document_id:document.id,original_text:document.content_markdown,mime_type:'text/markdown',source_type:'generated_note',page_count:1};
   }
   const row=await one("SELECT * FROM course_materials WHERE id=?",id);
-  if(!row)fail('NOT_FOUND');await access(user,row.course_id,write);return row;
+  if(!row)fail('NOT_FOUND');await access(user,row.course_id,write);if(row.review_status==='deletion_pending')fail('STORAGE_DELETE_FAILED');return row;
  }
  async function note(user,id,write=false){
   const row=await one("SELECT * FROM course_documents WHERE id=?",id);
@@ -67,25 +68,28 @@ export function createCourseLibrary(db,bucket){
   const row=await one("SELECT * FROM course_generation_jobs WHERE id=?",id);
   if(!row)fail('NOT_FOUND');await access(user,row.course_id,true);if(row.user_id!==user)fail('FORBIDDEN');return row;
  }
- const reviewState=m=>useOriginal(m)?'original_ready':m.page_count>0&&m.recorded_pages===m.page_count&&(m.mime_type!=='application/pdf'||m.prepared_pages===m.page_count)
+ const reviewState=m=>m.review_status==='deletion_pending'?'deletion_pending':useOriginal(m)?'original_ready':m.page_count>0&&m.recorded_pages===m.page_count&&(m.mime_type!=='application/pdf'||m.prepared_pages===m.page_count)
    ?(m.issue_pages?'reviewed_with_issues':'reviewed'):'pending_review';
  async function reviewSummary(m){
   const [pages,images]=await Promise.all([
    all("SELECT page_num,evidence_json,unresolved_json FROM course_material_pages WHERE material_id=? ORDER BY page_num",m.id),
-   all("SELECT page_num FROM course_material_page_images WHERE material_id=? ORDER BY page_num",m.id)
+   all("SELECT page_num,text_ready FROM course_material_page_images WHERE material_id=? ORDER BY page_num",m.id)
   ]);
   const recorded=pages.filter(p=>p.page_num>=1&&p.page_num<=m.page_count);
   const concerns=recorded.filter(p=>JSON.parse(p.unresolved_json||'[]').length).map(p=>({material_id:m.id,title:m.title,page_num:p.page_num,
     unresolved:JSON.parse(p.unresolved_json),evidence_ids:JSON.parse(p.evidence_json||'[]')}));
   const review_status=reviewState({...m,recorded_pages:recorded.length,issue_pages:concerns.length,prepared_pages:images.length});
-  return {review_status,available_for_generation:review_status!=='pending_review',recorded_pages:recorded.map(p=>p.page_num),review_concerns:concerns};
+  const summary={review_status,available_for_generation:['reviewed','reviewed_with_issues','original_ready'].includes(review_status),recorded_pages:recorded.map(p=>p.page_num),review_concerns:concerns,
+   prepared_pages:images.map(p=>p.page_num),text_ready_pages:images.filter(p=>p.text_ready).map(p=>p.page_num)};
+  return summary;
  }
  async function originalContent(m){
+  if(originalCache.has(m.id))return originalCache.get(m.id);
   if(m.original_text!==null&&m.original_text!==undefined){if(!m.original_text.trim())fail('ORIGINAL_UNREADABLE');return m.original_text;}
   if(!m.storage_key||!bucket?.get)fail('ORIGINAL_UNREADABLE');
   const file=await bucket.get(m.storage_key);if(!file)fail('NOT_FOUND');
   const parsed=extractOriginal(new Uint8Array(await new Response(file.body).arrayBuffer()),m.mime_type);
-  if(!parsed.text)fail('ORIGINAL_UNREADABLE');return parsed.text;
+  if(!parsed.text)fail('ORIGINAL_UNREADABLE');originalCache.set(m.id,parsed.text);return parsed.text;
  }
  async function sourceConcerns(user,ids,originalIds=[],documentRevisions={}){
   const concerns=[];
@@ -116,7 +120,7 @@ export function createCourseLibrary(db,bucket){
    await access(user,course_id);
    const rows=await all("SELECT id,course_id,title,source_type,weeks_json,exam_year,original_filename AS file_name,mime_type,provenance,review_status,page_count,created_at,(SELECT count(*) FROM course_material_page_images p WHERE p.material_id=course_materials.id) AS prepared_pages,(SELECT count(*) FROM course_material_pages p WHERE p.material_id=course_materials.id AND p.page_num BETWEEN 1 AND course_materials.page_count) AS recorded_pages,(SELECT count(*) FROM course_material_pages p WHERE p.material_id=course_materials.id AND p.page_num BETWEEN 1 AND course_materials.page_count AND json_array_length(p.unresolved_json)>0) AS issue_pages FROM course_materials WHERE course_id=? ORDER BY created_at DESC,id DESC LIMIT 400",course_id);
    const generated=await all("SELECT d.id AS document_id,d.title,d.revision,d.type,d.updated_at FROM course_documents d WHERE d.course_id=? AND EXISTS(SELECT 1 FROM course_generation_jobs j WHERE j.document_id=d.id AND j.mode NOT IN ('exam_paper','calculator') AND EXISTS(SELECT 1 FROM course_generation_parts p WHERE p.job_id=j.id)) ORDER BY d.updated_at DESC LIMIT 400",course_id);
-   const catalog=rows.map(({weeks_json,...r})=>{const review_status=reviewState(r);return {...r,review_status,processing_mode:useOriginal(r)?'original':r.source_type==='transcript'&&!VISUAL.has(r.mime_type)?'transcript':'review',can_use_original:useOriginal(r),available_for_generation:review_status!=='pending_review',weeks:JSON.parse(weeks_json||'[]'),extract_status:review_status!=='pending_review'?'ready':'pending'};});
+   const catalog=rows.map(({weeks_json,...r})=>{const review_status=reviewState(r);return {...r,review_status,processing_mode:useOriginal(r)?'original':r.source_type==='transcript'&&!VISUAL.has(r.mime_type)?'transcript':'review',can_use_original:useOriginal(r),available_for_generation:['reviewed','reviewed_with_issues','original_ready'].includes(review_status),weeks:JSON.parse(weeks_json||'[]'),extract_status:review_status!=='pending_review'?'ready':'pending'};});
    catalog.push(...generated.map(d=>({...d,id:'generated:'+d.document_id,course_id,source_type:'generated_note',mime_type:'text/markdown',processing_mode:'generated',review_status:'generated_ready',available_for_generation:true,weeks:[],page_count:1})));
    const [packs,casio]=await Promise.all([
     all("SELECT id,title FROM course_problem_packs WHERE course_id=? ORDER BY created_at DESC LIMIT 400",course_id),
@@ -149,31 +153,43 @@ export function createCourseLibrary(db,bucket){
    try{
      const parsed=DIRECT.has(mime)||mime.endsWith('presentationml.presentation')?extractOriginal(data,mime):{};
      const originalText=['text/plain','text/markdown'].includes(mime)?new TextDecoder('utf-8',{fatal:true}).decode(data):parsed.text??null;
-     await q("INSERT INTO course_materials(id,course_id,title,source_type,weeks_json,exam_year,original_filename,mime_type,provenance,storage_key,sha256,original_text,review_status,page_count) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'pending_review',?)",
-       id,course_id,name,source_type,JSON.stringify(meta.weeks),meta.examYear,file,mime,provenance.trim(),key,hash,originalText,mime==='application/pdf'?0:parsed.pages?.length||1).run();
+     const stored=await q("INSERT INTO course_materials(id,course_id,title,source_type,weeks_json,exam_year,original_filename,mime_type,provenance,storage_key,sha256,original_text,review_status,page_count) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,'pending_review',? WHERE EXISTS(SELECT 1 FROM courses WHERE id=? AND deletion_pending=0)",
+       id,course_id,name,source_type,JSON.stringify(meta.weeks),meta.examYear,file,mime,provenance.trim(),key,hash,originalText,mime==='application/pdf'?0:parsed.pages?.length||1,course_id).run();
+     if(stored.meta.changes!==1)fail('NOT_FOUND');
    }catch(e){await bucket.delete(key).catch(()=>{});throw e}
    return {id,review_status:'pending_review'};
   },
   async registerText(user,{course_id,title,source_type='transcript',weeks=[],exam_year=null,provenance='',content}={}){
    await access(user,course_id,true);
    if(typeof provenance!=='string'||provenance.length>400)fail('BAD_REQUEST');
-   const meta=metadata(source_type,weeks,exam_year),value=clean(content,950000),id=uid();
-   await q("INSERT INTO course_materials(id,course_id,title,source_type,weeks_json,exam_year,provenance,original_text,mime_type,review_status,page_count) VALUES(?,?,?,?,?,?,?,?,'text/plain','pending_review',1)",
-     id,course_id,clean(title||('전사본 · '+new Date().toISOString().replace('T',' ').slice(0,16)),200),source_type,JSON.stringify(meta.weeks),meta.examYear,provenance.trim(),value).run();
-   return {id,review_status:'pending_review'};
+   const meta=metadata(source_type,weeks,exam_year),value=clean(content,950000);
+   const hash='pasted:'+ [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))].map(x=>x.toString(16).padStart(2,'0')).join('');
+   const name=clean(title||('전사본 · '+new Date().toISOString().replace('T',' ').slice(0,16)),200);
+   // Exact-text fallback also recognizes transcripts registered before hashing was added.
+   const duplicate=await one("SELECT id FROM course_materials WHERE course_id=? AND source_type=? AND (sha256=? OR (sha256 IS NULL AND original_text=?)) LIMIT 1",course_id,source_type,hash,value);
+   if(duplicate){await q("UPDATE course_materials SET title=?,weeks_json=?,exam_year=?,provenance=?,sha256=? WHERE id=?",name,JSON.stringify(meta.weeks),meta.examYear,provenance.trim(),hash,duplicate.id).run();return {id:duplicate.id,reused:true};}
+   const id=uid();
+   await q("INSERT OR IGNORE INTO course_materials(id,course_id,title,source_type,weeks_json,exam_year,provenance,original_text,sha256,mime_type,review_status,page_count) VALUES(?,?,?,?,?,?,?,?,?,'text/plain','pending_review',1)",
+     id,course_id,name,source_type,JSON.stringify(meta.weeks),meta.examYear,provenance.trim(),value,hash).run();
+   const stored=await one("SELECT id FROM course_materials WHERE course_id=? AND source_type=? AND sha256=?",course_id,source_type,hash);
+   return {id:stored.id,reused:stored.id!==id,review_status:'pending_review'};
   },
   async deleteMaterial(user,{id}={}){
-   const material=await source(user,id,true);
+   const material=await one("SELECT * FROM course_materials WHERE id=?",id);
+   if(!material)fail('NOT_FOUND');await access(user,material.course_id,true);
+   await q("UPDATE course_materials SET review_status='deletion_pending' WHERE id=?",id).run();
    const images=await all('SELECT storage_key FROM course_material_page_images WHERE material_id=?',id);
-   await q('DELETE FROM course_materials WHERE id=? AND course_id=?',id,material.course_id).run();
    const keys=[material.storage_key,...images.map(image=>image.storage_key)].filter(Boolean);
-   await Promise.allSettled(keys.map(key=>bucket?.delete(key)));
+   if(keys.length&&!bucket?.delete)fail('STORAGE_NOT_CONFIGURED');
+   for(let i=0;i<keys.length;i+=20){const results=await Promise.allSettled(keys.slice(i,i+20).map(key=>bucket.delete(key)));if(results.some(x=>x.status==='rejected'))fail('STORAGE_DELETE_FAILED');}
+   await q('DELETE FROM course_materials WHERE id=? AND course_id=?',id,material.course_id).run();
    return {id,deleted:true};
   },
   async deleteCourse(user,{id}={}){
    if(!user||!id)fail('BAD_REQUEST');
    const owned=await one('SELECT id FROM courses WHERE id=? AND owner_user_id=?',id,user);
    if(!owned)fail('NOT_FOUND');
+   await q('UPDATE courses SET deletion_pending=1 WHERE id=? AND owner_user_id=?',id,user).run();
    const [materials,images,legacy,legacyImages]=await Promise.all([
     all('SELECT storage_key FROM course_materials WHERE course_id=?',id),
     all('SELECT p.storage_key FROM course_material_page_images p JOIN course_materials m ON m.id=p.material_id WHERE m.course_id=?',id),
@@ -212,7 +228,7 @@ export function createCourseLibrary(db,bucket){
    if(old)return {material_id,page_num,reused:true};
    const key='course-pages/'+m.course_id+'/'+material_id+'/'+page_num+'/'+uid();
    await bucket.put(key,bytes,{httpMetadata:{contentType:mime_type}});
-   try{await q("INSERT INTO course_material_page_images(material_id,page_num,storage_key,mime_type) VALUES(?,?,?,?)",material_id,page_num,key,mime_type).run();}
+   try{const stored=await q("INSERT INTO course_material_page_images(material_id,page_num,storage_key,mime_type) SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM course_materials m JOIN courses c ON c.id=m.course_id WHERE m.id=? AND m.review_status<>'deletion_pending' AND c.deletion_pending=0)",material_id,page_num,key,mime_type,material_id).run();if(stored.meta.changes!==1)fail('NOT_FOUND');}
    catch(e){await bucket.delete(key).catch(()=>{});throw e}
    return {material_id,page_num,stored:true};
   },
@@ -220,21 +236,16 @@ export function createCourseLibrary(db,bucket){
    const m=await source(user,material_id,true);
    if(m.mime_type!=='application/pdf'||!Number.isInteger(page_num)||page_num<1||page_num>m.page_count||
       typeof text!=='string'||text.length>100000)fail('BAD_REQUEST');
-   const updated=await q("UPDATE course_material_page_images SET extracted_text=?,updated_at=CURRENT_TIMESTAMP WHERE material_id=? AND page_num=?",text,material_id,page_num).run();
+   const updated=await q("UPDATE course_material_page_images SET extracted_text=?,text_ready=1,updated_at=CURRENT_TIMESTAMP WHERE material_id=? AND page_num=?",text,material_id,page_num).run();
    if(updated.meta.changes!==1)fail('NOT_FOUND');
    return {material_id,page_num,saved:true};
   },
   async pageStatus(user,{material_id}={}){
    const m=await source(user,material_id);
    const summary=await reviewSummary(m);
-   const [images,reviews]=await Promise.all([
-    all("SELECT page_num FROM course_material_page_images WHERE material_id=? ORDER BY page_num",material_id),
-    all("SELECT page_num,unresolved_json FROM course_material_pages WHERE material_id=? ORDER BY page_num",material_id)
-   ]);
-   return {material_id,page_count:m.page_count,prepared_pages:images.map(x=>x.page_num),
-    reviewed_pages:reviews.filter(x=>!JSON.parse(x.unresolved_json||'[]').length).map(x=>x.page_num),
-    needs_review_pages:reviews.filter(x=>JSON.parse(x.unresolved_json||'[]').length).map(x=>x.page_num),
-    ...summary};
+   const issues=new Set(summary.review_concerns.map(x=>x.page_num));
+   return {material_id,page_count:m.page_count,...summary,
+    reviewed_pages:summary.recorded_pages.filter(n=>!issues.has(n)),needs_review_pages:[...issues]};
   },
   async getPageImage(user,{material_id,page_num=1}={}){
    const m=await source(user,material_id);
@@ -333,8 +344,8 @@ export function createCourseLibrary(db,bucket){
   async search(user,{course_id,query}={}){
    await access(user,course_id);
    const term=clean(query,180),pattern='%'+term.replace(/[\\%_]/g,x=>'\\'+x)+'%';
-   const rows=await all("SELECT p.material_id AS source_id,m.title AS source_title,p.page_num,substr(p.corrected_text,1,1400) AS content,p.unresolved_json,p.evidence_json FROM course_material_pages p JOIN course_materials m ON m.id=p.material_id WHERE m.course_id=? AND p.corrected_text LIKE ? ESCAPE '\\' ORDER BY m.created_at DESC,p.page_num LIMIT 30",course_id,pattern);
-   return rows.map(({unresolved_json,evidence_json,...row})=>({...row,unresolved:JSON.parse(unresolved_json||'[]'),evidence_ids:JSON.parse(evidence_json||'[]')}));
+   const rows=await all("SELECT p.material_id AS source_id,m.title AS source_title,p.page_num,substr(p.corrected_text,max(1,instr(lower(p.corrected_text),lower(?))-100),1400) AS content,p.unresolved_json,p.evidence_json,m.created_at AS sort_time FROM course_material_pages p JOIN course_materials m ON m.id=p.material_id WHERE m.course_id=? AND m.review_status<>'deletion_pending' AND p.corrected_text LIKE ? ESCAPE '\\' UNION ALL SELECT id,title,1,substr(original_text,max(1,instr(lower(original_text),lower(?))-100),1400),'[]','[]',created_at FROM course_materials WHERE course_id=? AND source_type<>'transcript' AND mime_type IN ('text/plain','text/markdown','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/x-hwp','application/vnd.hancom.hwpx') AND review_status<>'deletion_pending' AND original_text LIKE ? ESCAPE '\\' ORDER BY sort_time DESC,page_num LIMIT 30",term,course_id,pattern,term,course_id,pattern);
+   return rows.map(({unresolved_json,evidence_json,sort_time,...row})=>({...row,unresolved:JSON.parse(unresolved_json||'[]'),evidence_ids:JSON.parse(evidence_json||'[]')}));
   },
   async listNotes(user,{course_id}={}){await access(user,course_id);return all("SELECT id,title,type,revision,updated_at FROM course_documents WHERE course_id=? AND NOT EXISTS(SELECT 1 FROM course_generation_jobs j WHERE j.document_id=course_documents.id AND j.mode IN ('exam_paper','calculator')) ORDER BY updated_at DESC",course_id)},
   async getNote(user,{id}={}){return note(user,id)},
@@ -390,13 +401,18 @@ export function createCourseLibrary(db,bucket){
    await db.batch(statements);return {id,job_id:run?.id,status:'complete',output_type:'problem_pack'};
   },
   async getAttempt(user,{pack_id,question_id}={}){await this.getPack(user,{id:pack_id});return one("SELECT data_json FROM course_attempts WHERE user_id=? AND pack_id=? AND question_id=?",user,pack_id,question_id)},
-  async listAttempts(user,{pack_id}={}){await this.getPack(user,{id:pack_id});return all("SELECT question_id,data_json,updated_at FROM course_attempts WHERE user_id=? AND pack_id=? ORDER BY updated_at DESC",user,pack_id)},
-  async saveAttempt(user,{pack_id,question_id,answer='',strokes=[],result='',bookmarked=false}={}){
+  async listAttempts(user,{pack_id}={}){await this.getPack(user,{id:pack_id});return all("SELECT question_id,data_json,revision,updated_at FROM course_attempts WHERE user_id=? AND pack_id=? ORDER BY updated_at DESC",user,pack_id)},
+  async saveAttempt(user,{pack_id,question_id,expected_revision=0,answer='',strokes=[],result='',bookmarked=false}={}){
    const p=await this.getPack(user,{id:pack_id});const qid=clean(question_id,200);
    if(!p.pack.questions.some(x=>String(x.id)===qid))fail('BAD_REQUEST');
    if(!Array.isArray(strokes)||strokes.length>5000||JSON.stringify(strokes).length>350000||typeof answer!=='string'||answer.length>15000)fail('BAD_REQUEST');
    const val=JSON.stringify({answer,strokes,result,bookmarked:!!bookmarked});
-   await q("INSERT INTO course_attempts(user_id,pack_id,question_id,data_json) VALUES(?,?,?,?) ON CONFLICT(user_id,pack_id,question_id) DO UPDATE SET data_json=excluded.data_json,updated_at=CURRENT_TIMESTAMP",user,pack_id,qid,val).run();return {saved:true};
+   if(!Number.isInteger(expected_revision)||expected_revision<0)fail('BAD_REQUEST');
+   let updated;
+   if(expected_revision===0)updated=await q("INSERT OR IGNORE INTO course_attempts(user_id,pack_id,question_id,data_json,revision) VALUES(?,?,?,?,1)",user,pack_id,qid,val).run();
+   else updated=await q("UPDATE course_attempts SET data_json=?,revision=revision+1,updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND pack_id=? AND question_id=? AND revision=?",val,user,pack_id,qid,expected_revision).run();
+   if(updated.meta.changes!==1)fail('REVISION_CONFLICT');
+   return {saved:true,revision:expected_revision+1};
   },
   async listCasio(user,{course_id}={}){await access(user,course_id);return all("SELECT id,title,updated_at FROM course_casio_projects WHERE course_id=? ORDER BY updated_at DESC",course_id)},
   async getCasio(user,{id}={}){const c=await one("SELECT * FROM course_casio_projects WHERE id=?",id);if(!c)fail('NOT_FOUND');await access(user,c.course_id);return c},
@@ -494,7 +510,7 @@ export function createCourseLibrary(db,bucket){
   },
   async listJobs(user,{course_id}={}){
    await access(user,course_id);
-   return all("SELECT id,mode,scope,status,document_id FROM course_generation_jobs WHERE course_id=? AND user_id=? ORDER BY rowid DESC LIMIT 100",course_id,user);
+   return all("SELECT id,mode,scope,CASE WHEN status='complete' AND ((mode='exam_paper' AND NOT EXISTS(SELECT 1 FROM course_problem_packs p WHERE p.id=course_generation_jobs.id)) OR (mode='calculator' AND NOT EXISTS(SELECT 1 FROM course_casio_projects p WHERE p.id=course_generation_jobs.id))) THEN 'awaiting_artifact' ELSE status END AS status,document_id FROM course_generation_jobs WHERE course_id=? AND user_id=? ORDER BY rowid DESC LIMIT 100",course_id,user);
   },
   async getJobProgress(user,{job_id}={}){
    const j=await job(user,job_id);
@@ -553,7 +569,7 @@ export async function handleCourseRequest(request,{db,bucket,userId}){
    }
    return json({error:'NOT_FOUND'},404);
  }catch(e){
-   const status={BAD_REQUEST:400,BAD_FILE:400,FORBIDDEN:403,NOT_FOUND:404,REVISION_CONFLICT:409,REVIEW_INCOMPLETE:422,OUTLINE_REQUIRED:422,STORAGE_NOT_CONFIGURED:503}[e?.code]||500;
+   const status={BAD_REQUEST:400,BAD_FILE:400,FORBIDDEN:403,NOT_FOUND:404,REVISION_CONFLICT:409,REVIEW_INCOMPLETE:422,OUTLINE_REQUIRED:422,STORAGE_NOT_CONFIGURED:503,STORAGE_DELETE_FAILED:503}[e?.code]||500;
    return json({error:status===500?'Request failed':e.code},status);
  }
 }

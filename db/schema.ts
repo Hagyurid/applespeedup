@@ -7,7 +7,7 @@ export const users = sqliteTable('users', {
 });
 export const courses = sqliteTable('courses', {
   id: text('id').primaryKey(), owner: text('owner_user_id').notNull().references(() => users.id), name: text('name').notNull(),
-  characteristics: text('characteristics').notNull().default(''), preferredMode: text('preferred_mode').notNull().default('detailed_note'),
+  deletionPending:integer('deletion_pending').notNull().default(0),characteristics: text('characteristics').notNull().default(''), preferredMode: text('preferred_mode').notNull().default('detailed_note'),
   createdAt: timestamp('created_at'), updatedAt: timestamp('updated_at'),
 }, t => [uniqueIndex('uq_courses_owner_name').on(t.owner, t.name)]);
 export const members = sqliteTable('course_members', {
@@ -147,7 +147,7 @@ export const courseMaterialPages=sqliteTable('course_material_pages',{
 export const courseMaterialPageImages=sqliteTable('course_material_page_images',{
  materialId:text('material_id').notNull().references(()=>courseMaterials.id,{onDelete:'cascade'}),
  pageNum:integer('page_num').notNull(),storageKey:text('storage_key').notNull(),
- mimeType:text('mime_type').notNull(),extractedText:text('extracted_text').notNull().default(''),
+ mimeType:text('mime_type').notNull(),extractedText:text('extracted_text').notNull().default(''),textReady:integer('text_ready').notNull().default(0),
  updatedAt:timestamp('updated_at')
 },t=>[primaryKey({columns:[t.materialId,t.pageNum]})]);
 export const courseDocuments=sqliteTable('course_documents',{
@@ -168,7 +168,7 @@ export const courseProblemPacks=sqliteTable('course_problem_packs',{
 export const courseAttempts=sqliteTable('course_attempts',{
  userId:text('user_id').notNull().references(()=>users.id),
  packId:text('pack_id').notNull().references(()=>courseProblemPacks.id,{onDelete:'cascade'}),
- questionId:text('question_id').notNull(),dataJson:text('data_json').notNull(),updatedAt:timestamp('updated_at')
+ questionId:text('question_id').notNull(),dataJson:text('data_json').notNull(),revision:integer('revision').notNull().default(1),updatedAt:timestamp('updated_at')
 },t=>[primaryKey({columns:[t.userId,t.packId,t.questionId]})]);
 export const courseCasioProjects=sqliteTable('course_casio_projects',{
  id:text('id').primaryKey(),courseId:text('course_id').notNull().references(()=>courses.id,{onDelete:'cascade'}),

@@ -25,7 +25,7 @@ export async function handleSitesRequest(request, env) {
     if(writesEnabled)await registerSitesUser(env.DB, principal);
     else await env.DB.prepare('SELECT id FROM users LIMIT 1').bind().first();
     if (url.pathname === '/api/session' && request.method === 'GET') {
-      return json({ display_name: principal.displayName, mutations_enabled: writesEnabled });
+      return json({ user_id: principal.id, display_name: principal.displayName, mutations_enabled: writesEnabled });
     }
     const handle = createHttpHandler({ db: env.DB, bucket: env.BUCKET,
       authenticate: async () => principal, allowedOrigin: url.origin, writesEnabled });

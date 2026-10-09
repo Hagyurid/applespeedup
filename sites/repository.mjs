@@ -23,7 +23,7 @@ export function createD1Repository(db){
       c.name, c.characteristics, c.owner_user_id, m.role
       FROM offerings o JOIN courses c ON c.id=o.course_id
       LEFT JOIN course_members m ON m.course_id=c.id AND m.user_id=?
-      WHERE o.id=? AND (c.owner_user_id=? OR m.user_id=?)`,userId,offeringId,userId,userId);
+      WHERE o.id=? AND c.deletion_pending=0 AND (c.owner_user_id=? OR m.user_id=?)`,userId,offeringId,userId,userId);
     if(!row)fail('NOT_FOUND');
     if(write && row.owner_user_id!==userId && !writeRoles.has(row.role))fail('FORBIDDEN');
     return row;
@@ -38,7 +38,7 @@ export function createD1Repository(db){
     assertOfferingAccess: authorizeOffering,
     async listCourses(userId){
       if(!userId)fail('FORBIDDEN');
-      return all(`SELECT DISTINCT c.id,c.name,c.characteristics,c.preferred_mode,c.owner_user_id
+      return all(`SELECT DISTINCT c.id,c.name,c.characteristics,c.preferred_mode,c.owner_user_id,c.deletion_pending
          FROM courses c LEFT JOIN course_members m ON c.id=m.course_id AND m.user_id=?
          WHERE c.owner_user_id=? OR m.user_id=? ORDER BY c.name`,userId,userId,userId);
     },
@@ -55,13 +55,13 @@ export function createD1Repository(db){
     },
     async listOfferings(userId,{course_id}){
       const c=await first(`SELECT c.id FROM courses c LEFT JOIN course_members m ON m.course_id=c.id AND m.user_id=?
-        WHERE c.id=? AND (c.owner_user_id=? OR m.user_id=?)`,userId,course_id,userId,userId);
+        WHERE c.id=? AND c.deletion_pending=0 AND (c.owner_user_id=? OR m.user_id=?)`,userId,course_id,userId,userId);
       if(!c)fail('NOT_FOUND');
       return all('SELECT id,course_id,year,term,professor,section,notes FROM offerings WHERE course_id=? ORDER BY year DESC,term DESC,section',course_id);
     },
     async createOffering(userId,{course_id,year,term,professor='',section='',notes=''}){
       const c=await first(`SELECT c.id,c.owner_user_id,m.role FROM courses c LEFT JOIN course_members m ON m.course_id=c.id AND m.user_id=?
-        WHERE c.id=? AND (c.owner_user_id=? OR m.user_id=?)`,userId,course_id,userId,userId);
+        WHERE c.id=? AND c.deletion_pending=0 AND (c.owner_user_id=? OR m.user_id=?)`,userId,course_id,userId,userId);
       if(!c)fail('NOT_FOUND');
       if(c.owner_user_id!==userId&&!writeRoles.has(c.role))fail('FORBIDDEN');
       if(!Number.isInteger(year)||year<1990||year>2100||!['1','2','여름','겨울'].includes(term))fail('BAD_REQUEST');

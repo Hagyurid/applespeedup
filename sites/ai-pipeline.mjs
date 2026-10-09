@@ -20,7 +20,7 @@ export function createAiPipeline(db,bucket=null){
     if(!user||!courseId)reject('FORBIDDEN');
     const row=await first(`SELECT c.id,c.name,c.owner_user_id,m.role FROM courses c
       LEFT JOIN course_members m ON m.course_id=c.id AND m.user_id=?
-      WHERE c.id=? AND (c.owner_user_id=? OR m.user_id=?)`,user,courseId,user,user);
+      WHERE c.id=? AND c.deletion_pending=0 AND (c.owner_user_id=? OR m.user_id=?)`,user,courseId,user,user);
     if(!row)reject('NOT_FOUND');
     if(write&&row.owner_user_id!==user&&!['owner','editor'].includes(row.role))reject('FORBIDDEN');
     return row;
