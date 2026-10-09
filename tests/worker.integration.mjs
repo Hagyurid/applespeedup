@@ -37,6 +37,20 @@ try{
     assert.equal((await request('/domain/core.mjs')).status,200);
     assert.equal((await request('/favicon.svg')).status,200);
   });
+  await check('every browser module dependency is published as JavaScript',async()=>{
+    const visited=new Set();
+    async function walk(path){
+      if(visited.has(path))return;visited.add(path);
+      const response=await request(path);assert.equal(response.status,200,path);
+      assert.match(response.headers.get('content-type')||'',/javascript/,path);
+      const source=await response.text();
+      for(const match of source.matchAll(/(?:\bfrom\s*|\bimport\s*|\bimport\s*\(\s*)['"]([^'"]+)['"]/g)){
+        const spec=match[1];if(!spec.startsWith('.')&&!spec.startsWith('/'))continue;
+        await walk(new URL(spec,'https://app.example'+path).pathname);
+      }
+    }
+    await walk('/web/connected.js');assert.ok(visited.has('/domain/note-math.mjs'));assert.ok(visited.has('/domain/note-presentation.mjs'));
+  });
   const c=await (await request('/api/courses',{method:'POST',json:{name:'Worker 검증 과목'}})).json();assert.ok(c.id);
   const o=await (await request('/api/offerings',{method:'POST',json:{course_id:c.id,year:2026,term:'2',professor:'검증 교수',section:'01'}})).json();assert.ok(o.id);
   const old=await (await request('/api/offerings',{method:'POST',json:{course_id:c.id,year:2025,term:'2',professor:'검증 교수',section:'01'}})).json();assert.ok(old.id);
