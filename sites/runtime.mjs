@@ -27,10 +27,8 @@ export async function handleSitesRequest(request, env) {
     if (url.pathname === '/api/session' && request.method === 'GET') {
       return json({ display_name: principal.displayName, mutations_enabled: writesEnabled });
     }
-    // The existing MCP core remains covered by tests. Its Sites plugin is a later milestone.
-    if (url.pathname === '/mcp') return json({ error: 'ChatGPT 플러그인 연결은 준비 중입니다.' }, 503);
     const handle = createHttpHandler({ db: env.DB, bucket: env.BUCKET,
-      authenticate: async () => principal, allowedOrigin: url.origin });
+      authenticate: async () => principal, allowedOrigin: url.origin, writesEnabled });
     return await handle(request);
   } catch {
     console.error('A+ storage request failed', { path: url.pathname });

@@ -72,6 +72,34 @@ try{
     assert.deepEqual(responses.map(r=>r.status).sort(),[201,409]);
     assert.equal((await db.prepare('SELECT count(*) AS n FROM note_versions WHERE note_id=?').bind(note.id).first()).n,3);
   });
-  await check('incomplete Site MCP stays closed',async()=>assert.equal((await request('/mcp',{method:'POST',json:{jsonrpc:'2.0',id:1,method:'tools/list'}})).status,503));
+  await check('MCP publishes course tools only to the authenticated user',async()=>{
+    const r=await request('/mcp',{method:'POST',headers:{...alice,accept:'application/json, text/event-stream'},json:{jsonrpc:'2.0',id:1,method:'tools/list'}});
+    assert.equal(r.status,200);const list=(await r.json()).result.tools;
+    assert.ok(list.some(x=>x.name==='get_course_page_image'));assert.ok(list.every(x=>x.name!=='list_sources'));
+  });
+  await check('course transcript review, PDF page image and SolvePad ink persist through the Worker',async()=>{
+    const text=await (await request('/api/v2/text',{method:'POST',json:{course_id:c.id,title:'녹음 전사본',source_type:'transcript',content:'티엘 모듈러스'}})).json();
+    const invoke=async(name,args,headers=alice)=>{
+      const r=await request('/mcp',{method:'POST',headers:{...headers,accept:'application/json, text/event-stream'},json:{jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}}});
+      assert.equal(r.status,200);return (await r.json()).result;
+    };
+    assert.equal(JSON.parse((await invoke('get_course_original_text',{material_id:text.id})).content[0].text).original_text,'티엘 모듈러스');
+    assert.equal((await invoke('save_course_review_page',{material_id:text.id,page_num:1,raw_text:'티엘 모듈러스',corrected_text:'Thiele modulus'})).isError,false);
+    assert.equal((await invoke('finalize_course_review',{material_id:text.id,page_count:1})).isError,false);
+    assert.equal(JSON.parse((await invoke('get_course_verified_text',{material_id:text.id})).content[0].text).pages[0].corrected_text,'Thiele modulus');
+    const pdf=await (await request('/api/v2/upload',{method:'POST',headers:{...alice,'content-type':'application/octet-stream','x-course-id':c.id,'x-source-type':'lecture_slides','x-title':encodeURIComponent('자료'),'x-filename':'scan.pdf'},body:new TextEncoder().encode('%PDF-1.4 local page')})).json();
+    assert.ok(pdf.id);
+    assert.equal((await request('/api/v2/pdf-pages',{method:'POST',json:{material_id:pdf.id,page_count:1}})).status,201);
+    const image=new Uint8Array(90);image.set([137,80,78,71,13,10,26,10]);
+    assert.equal((await request('/api/v2/page-image',{method:'POST',headers:{...alice,'content-type':'image/png','x-material-id':pdf.id,'x-page-num':'1'},body:image})).status,201);
+    assert.equal((await invoke('get_course_page_image',{material_id:pdf.id,page_num:1})).content[0].type,'image');
+    assert.equal((await invoke('get_course_page_image',{material_id:pdf.id,page_num:1},bob)).isError,true);
+    const pack=await (await request('/api/v2/pack',{method:'POST',json:{course_id:c.id,title:'연습',pack:{schemaVersion:'solvepad.problemPack.v5',questions:[{id:'q1',promptMd:'2+2',answer:{value:'4'}}]}}})).json();
+    assert.ok(pack.id);
+    assert.equal((await request('/api/v2/attempt',{method:'POST',json:{pack_id:pack.id,question_id:'q1',answer:'4',strokes:[[{color:'#222',width:4,points:[{x:.1,y:.2},{x:.2,y:.3}]}]],result:'correct',bookmarked:true}})).status,201);
+    const attempts=await (await request('/api/v2/attempts?pack_id='+pack.id)).json();
+    assert.equal(attempts.length,1);assert.equal(JSON.parse(attempts[0].data_json).strokes[0][0].points.length,2);
+    assert.equal((await request('/api/v2/attempts?pack_id='+pack.id,{headers:bob})).status,404);
+  });
   console.log(`Worker integration: ${checks} checks passed. Live login and browser interaction remain unverified.`);
 }finally{await mf.dispose();}

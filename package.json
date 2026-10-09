@@ -1,6 +1,6 @@
 {
   "name": "aplus-accelerator-v2",
-  "version": "0.7.0-preview.2",
+  "version": "0.10.0-preview.1",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -10,7 +10,7 @@
     "dev": "node scripts/sync-web-assets.mjs && node scripts/run-framework.mjs dev",
     "build": "node scripts/sync-web-assets.mjs && node scripts/run-framework.mjs build",
     "start": "node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js dev --config dist/server/wrangler.json --local --persist-to .wrangler/state --ip 127.0.0.1 --inspector-port 0",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern public/vendor --ignore-pattern public/web --ignore-pattern public/domain",
     "db:generate": "drizzle-kit generate && node scripts/sync-test-schema.mjs",
     "test": "node --test tests/*.test.mjs",
     "check": "node --check web/app.js && node --check web/db.js && node --check web/connected.js && node --check domain/core.mjs && node --check sites/course-v2.mjs && node --check sites/ai-pipeline.mjs && node --check sites/mcp-core.mjs && node --check sites/repository.mjs && node --check sites/assets.mjs && node --check sites/http.mjs && node --check sites/auth.mjs && node --check sites/runtime.mjs && node --check sites/content.mjs",
@@ -29,9 +29,11 @@
     "drizzle-orm": "0.45.2",
     "embla-carousel-react": "^8.6.0",
     "input-otp": "^1.4.2",
+    "katex": "0.16.22",
     "lucide-react": "^1.31.0",
     "next": "16.3.4",
     "next-themes": "^0.4.6",
+    "pdfjs-dist": "5.4.624",
     "radix-ui": "^1.6.7",
     "react": "19.2.6",
     "react-day-picker": "^10.0.1",

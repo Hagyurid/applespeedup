@@ -89,7 +89,9 @@
                 <label class="field">출처 설명 (선택)<input id="provenance" maxlength="400" placeholder="예: 강의 PPT, 교재 스캔본"></label>
                 <button class="primary action-button" type="submit">자료 저장</button>
               </form>
-              <p class="hint">TXT·MD는 등록 즉시 검색할 수 있습니다. PNG·JPG는 AI 분석을 위해 페이지 이미지를 준비합니다. PDF·DOCX·PPTX는 현재 원본만 저장하며, ChatGPT 이미지 전달을 위한 페이지 변환 기능은 추가 개발 중입니다.</p>
+              <p class="hint">TXT·MD 전사본은 원문을 저장하고 GPT 교정을 기다립니다. PDF는 업로드 후 이 기기에서 페이지를 준비합니다. 페이지 준비와 ChatGPT 교정이 끝나야 제작 자료로 선택할 수 있습니다.</p>
+              <p id="pdfProgress" class="hint" role="status" hidden></p>
+              <button id="cancelPdf" type="button" class="ghost small" hidden>페이지 준비 일시정지</button>
             </section>
 
             <section class="card workspace-card library-card">
@@ -146,7 +148,7 @@
             </section>
             <section class="card workspace-card note-editor-card">
               <div class="card-heading"><div><span class="step-number">02</span><h2>편집</h2></div><p>Markdown 원문 보존</p></div>
-              <div class="note-view-toolbar"><button type="button" id="previewNote" class="ghost small">문서 보기</button><button type="button" id="editNote" class="ghost small">원문 편집</button><button type="button" id="openLegacyStudy" class="ghost small">고급 편집기</button><button type="button" id="printNote" class="ghost small">PDF 인쇄</button></div>
+              <div class="note-view-toolbar"><button type="button" id="previewNote" class="ghost small">문서 보기</button><button type="button" id="editNote" class="ghost small">원문 편집</button><button type="button" id="noteHeading" class="ghost small">제목 삽입</button><button type="button" id="noteBold" class="ghost small">굵게</button><button type="button" id="printNote" class="ghost small">PDF 인쇄</button></div>
               <article id="notePreview" class="note-preview" aria-label="정리본 문서 미리보기" tabindex="0"></article>
               <form id="note-form" class="panel-form">
                 <label class="field">정리본 제목<input id="noteTitle" required maxlength="300"></label>
@@ -157,17 +159,39 @@
           </div>
         </section>
         <section id="page-solvepad" class="workspace-page" data-page-panel="solvepad" aria-labelledby="solvepad-title" hidden>
-          <div class="page-head"><div class="eyebrow">PRACTICE</div><h1 id="solvepad-title">SolvePad 문제풀이</h1><p class="sub">기존 필기·채점·오답 풀이 도구를 실행합니다. 문제팩 서버 연동은 별도 작업 중이므로 현재 로컬 풀이 기록과 구분해야 합니다.</p></div>
+          <div class="page-head compact-page-head"><div><div class="eyebrow">PRACTICE</div><h1 id="solvepad-title">SolvePad 문제풀이</h1><p class="sub">현재 과목의 문제를 풀고 필기·답안·오답을 저장하세요.</p></div></div>
           <div class="tool-sync-bar">
             <label class="field">현재 과목의 문제팩<select id="packSelect" aria-label="문제팩 선택"></select></label>
             <button class="ghost small" id="refreshPacks" type="button">목록 새로고침</button>
             <button class="primary small" id="loadPack" type="button">문제풀이 시작</button>
             <label class="field">문제팩 JSON 등록<input id="packUpload" type="file" accept=".json"></label>
           </div>
-          <iframe id="solvepadFrame" title="SolvePad 문제풀이" class="legacy-frame" data-lazy-src="/legacy/solvepad/index.html"></iframe>
+          <div id="solveEmpty" class="card workspace-card">문제팩을 선택하면 여기에 풀이 공간이 열립니다.</div>
+          <div id="solveWorkspace" class="solve-layout" hidden>
+            <aside class="card solve-index" aria-label="문제 목록">
+              <div class="solve-index-head"><strong id="solvePackTitle">문제팩</strong><span id="solveCount"></span></div>
+              <label class="field">문제 보기<select id="solveFilter"><option value="all">전체</option><option value="bookmarked">북마크</option><option value="wrong">오답</option></select></label>
+              <label class="field solve-mobile-picker">문제 선택<select id="solveQuestionSelect" aria-label="풀 문제 선택"></select></label>
+              <div id="solveQuestionList" class="solve-question-list"></div>
+            </aside>
+            <section class="card solve-sheet" aria-label="현재 문제">
+              <div class="solve-heading"><div><span id="solveNumber" class="eyebrow"></span><h2 id="solveQuestionTitle"></h2></div><span id="solveSaveStatus" role="status">저장 대기</span></div>
+              <div id="solvePrompt" class="solve-prompt"></div>
+              <div id="solveChoices" class="solve-choices"></div>
+              <label class="field">내 답안<input id="solveAnswer" autocomplete="off" placeholder="답을 입력하거나 선택하세요"></label>
+              <div class="solve-actions"><button id="solveCheck" class="primary small" type="button">답 확인</button><button id="solveHint" class="ghost small" type="button">힌트</button><button id="solveSolution" class="ghost small" type="button">해설 보기</button><button id="solveBookmark" class="ghost small" type="button" aria-pressed="false">북마크</button></div>
+              <div id="solveFeedback" class="solve-feedback" role="status" hidden></div>
+              <div id="solveReveal" class="solve-reveal" hidden></div>
+              <div class="solve-paper-head"><strong>풀이 필기</strong><span id="solvePageLabel"></span></div>
+              <div class="solve-tools" role="toolbar" aria-label="필기 도구"><button id="solvePen" class="ghost small active" type="button" aria-pressed="true">펜</button><button id="solveErase" class="ghost small" type="button" aria-pressed="false">지우개</button><label>굵기 <input id="solveWidth" type="range" min="2" max="12" value="4"></label><button id="solveUndo" class="ghost small" type="button">되돌리기</button><button id="solveClear" class="ghost small" type="button">이 페이지 지우기</button></div>
+              <canvas id="solveInk" class="solve-ink" aria-label="손가락 또는 펜으로 풀이를 적는 영역"></canvas>
+              <div class="solve-page-actions"><button id="solvePrevPage" class="ghost small" type="button">이전 필기장</button><button id="solveNextPage" class="ghost small" type="button">다음 필기장</button><button id="solveAddPage" class="ghost small" type="button">필기장 추가</button></div>
+              <div class="solve-nav"><button id="solvePrev" class="ghost" type="button">이전 문제</button><button id="solveNext" class="primary" type="button">다음 문제</button></div>
+            </section>
+          </div>
         </section>
         <section id="page-casio" class="workspace-page" data-page-panel="casio" aria-labelledby="casio-title" hidden>
-          <div class="page-head"><div class="eyebrow">PROGRAMS</div><h1 id="casio-title">CASIO Studio</h1><p class="sub">기존 CASIO 프로젝트 편집 화면을 실행합니다. 이전 Render 전용 검증·ZIP 서버 기능은 현재 연결되지 않습니다.</p></div>
+          <div class="page-head"><div class="eyebrow">PROGRAMS</div><h1 id="casio-title">CASIO Studio</h1><p class="sub">현재 과목의 Blueprint·PRGM·설명서를 작성하고 저장합니다.</p></div>
           <div class="tool-sync-bar">
             <label class="field">저장된 CASIO 프로젝트<select id="casioSelect" aria-label="CASIO 프로젝트 선택"></select></label>
             <button class="ghost small" id="refreshCasio" type="button">목록 갱신</button>
@@ -181,9 +205,6 @@
             <button class="primary action-button" type="submit">사이트에 CASIO 프로젝트 저장</button>
             <button class="ghost" id="downloadCasio" type="button">PRGM 텍스트 다운로드</button>
           </form>
-          <details class="legacy-tools"><summary>기존 CASIO Studio 도구 열기 (서버 전용 검증은 미연결)</summary>
-            <iframe id="casioFrame" title="기존 CASIO 프로그램 편집" class="legacy-frame" data-lazy-src="/legacy/casio/index.html"></iframe>
-          </details>
         </section>
       </main>
     </div>

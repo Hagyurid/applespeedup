@@ -74,8 +74,11 @@ test('A retried note creation has one saved version; stale edits cannot overwrit
   assert.equal((await s.request('/api/notes',{method:'POST',body:{...body,content_markdown:'다른 내용'}})).status,409);
 });
 
-test('Site plugin remains unavailable until its separate connection milestone',async()=>{
-  const s=suite();assert.equal((await s.request('/mcp',{method:'POST',body:{jsonrpc:'2.0',id:1,method:'tools/list'}})).status,503);
+test('Site MCP exposes authenticated course tools',async()=>{
+  const s=suite();
+  const list=await s.request('/mcp',{method:'POST',headers:{accept:'application/json, text/event-stream'},body:{jsonrpc:'2.0',id:1,method:'tools/list'}});
+  assert.equal(list.status,200);
+  assert.ok((await list.json()).result.tools.some(x=>x.name==='get_course_page_image'));
 });
 
 test('A hosted preview defaults to read-only; a caller cannot enable writes in headers or JSON',async()=>{

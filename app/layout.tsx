@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import "../web/styles.css";
 import "../web/connected.css";
+import "../web/solvepad.css";
+import "katex/dist/katex.min.css";
 
 export const metadata: Metadata = {
   title: "에쁠가속기 | A+ Accelerator",

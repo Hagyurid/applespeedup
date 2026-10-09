@@ -134,6 +134,7 @@ export const courseMaterials = sqliteTable('course_materials', {
  title:text('title').notNull(),sourceType:text('source_type').notNull(),
  weeksJson:text('weeks_json').notNull().default('[]'),examYear:integer('exam_year'),
  originalFilename:text('original_filename').notNull().default(''),mimeType:text('mime_type').notNull().default(''),
+ provenance:text('provenance').notNull().default(''),
  storageKey:text('storage_key'),sha256:text('sha256'),originalText:text('original_text'),
  reviewStatus:text('review_status').notNull().default('pending_review'),
  pageCount:integer('page_count').notNull().default(0),createdAt:timestamp('created_at')
@@ -142,6 +143,12 @@ export const courseMaterialPages=sqliteTable('course_material_pages',{
  materialId:text('material_id').notNull().references(()=>courseMaterials.id,{onDelete:'cascade'}),
  pageNum:integer('page_num').notNull(),rawText:text('raw_text').notNull(),correctedText:text('corrected_text').notNull(),
  evidenceJson:text('evidence_json').notNull().default('[]'),unresolvedJson:text('unresolved_json').notNull().default('[]')
+},t=>[primaryKey({columns:[t.materialId,t.pageNum]})]);
+export const courseMaterialPageImages=sqliteTable('course_material_page_images',{
+ materialId:text('material_id').notNull().references(()=>courseMaterials.id,{onDelete:'cascade'}),
+ pageNum:integer('page_num').notNull(),storageKey:text('storage_key').notNull(),
+ mimeType:text('mime_type').notNull(),extractedText:text('extracted_text').notNull().default(''),
+ updatedAt:timestamp('updated_at')
 },t=>[primaryKey({columns:[t.materialId,t.pageNum]})]);
 export const courseDocuments=sqliteTable('course_documents',{
  id:text('id').primaryKey(),courseId:text('course_id').notNull().references(()=>courses.id,{onDelete:'cascade'}),

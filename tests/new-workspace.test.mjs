@@ -10,9 +10,10 @@ const js=readFileSync(new URL('../web/connected.js',import.meta.url),'utf8');
 const css=readFileSync(new URL('../web/connected.css',import.meta.url),'utf8');
 
 test('Six responsive workspaces retain course registration, transcript, GPT, notes, SolvePad and CASIO',()=>{
- for(const id of ['page-courses','page-sources','page-gpt','page-notes','page-solvepad','page-casio','globalCourse','sourcePicker','notePreview','solvepadFrame','casioFrame']){
+ for(const id of ['page-courses','page-sources','page-gpt','page-notes','page-solvepad','page-casio','globalCourse','sourcePicker','notePreview','solveInk','solveAnswer','solveQuestionList','casioForm']){
    assert.match(html,new RegExp('id="'+id+'"'));
  }
+ assert.doesNotMatch(html,/iframe|\/legacy\//);
  const courses=html.split('id="page-courses"')[1].split('id="page-sources"')[0];
  assert.doesNotMatch(courses,/id="offering-form"|id="fact-form"/);
  assert.match(css,/\.mobile-nav\{grid-template-columns:repeat\(6/);

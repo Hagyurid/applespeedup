@@ -1,73 +1,44 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {D1TestDatabase} from './helpers/storage.mjs';
-import {createD1Repository} from '../sites/repository.mjs';
+import {D1TestDatabase,R2TestBucket} from './helpers/storage.mjs';
+import {createCourseLibrary} from '../sites/course-v2.mjs';
 import {handleMessage} from '../sites/mcp-core.mjs';
-
-class D1Mock extends D1TestDatabase {
-  seed(){
-    const db=this.db;
-    db.prepare('INSERT INTO users(id,email) VALUES(?,?)').run('u1','user1@example.com');
-    db.prepare('INSERT INTO users(id,email) VALUES(?,?)').run('u2','user2@example.com');
-    db.prepare('INSERT INTO users(id,email) VALUES(?,?)').run('u3','user3@example.com');
-    db.prepare('INSERT INTO courses(id,owner_user_id,name,characteristics) VALUES(?,?,?,?)').run('course1','u1','촉매반응공학','수식·계산 중심');
-    db.prepare("INSERT INTO course_members(course_id,user_id,role) VALUES('course1','u2','viewer')").run();
-    db.prepare("INSERT INTO offerings(id,course_id,year,term,professor) VALUES('current','course1',2026,'2','테스트 교수')").run();
-    db.prepare("INSERT INTO offerings(id,course_id,year,term,professor) VALUES('old','course1',2025,'2','이전 교수')").run();
-    db.prepare("INSERT INTO course_facts(id,course_id,offering_id,fact_key,fact_value,provenance,confidence) VALUES('fact1','course1','current','exam_type','계산형','시험 안내','official')").run();
-  }
+function setup(){
+ const db=new D1TestDatabase(),bucket=new R2TestBucket();
+ db.db.exec("INSERT INTO users(id,email) VALUES('alice','a@example.com'),('bob','b@example.com'); INSERT INTO courses(id,owner_user_id,name) VALUES('chem','alice','반응공학');");
+ const repo=createCourseLibrary(db,bucket);
+ const call=(user,name,args,allowWrites=true)=>handleMessage({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}},
+   {authenticate:async()=>user,repo,allowWrites});
+ return {db,bucket,repo,call};
 }
-const db=new D1Mock();db.seed();const repo=createD1Repository(db);
-const call=(user,name,args)=>handleMessage({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}}, {authenticate:async()=>user,repo});
-const unpack=x=>JSON.parse(x.result.content[0].text);
-const isError=x=>x.result.isError;
-
-test('read course/offering context and facts by year',async()=>{
-  const c=unpack(await call('u1','get_course_context',{offering_id:'current'}));
-  assert.equal(c.course.name,'촉매반응공학');assert.equal(c.offering.year,2026);assert.equal(c.facts[0].confidence,'official');
-  const prev=unpack(await call('u1','get_course_context',{offering_id:'old'}));assert.equal(prev.facts.length,0);
+const value=result=>JSON.parse(result.result.content[0].text);
+test('ChatGPT transcript correction saves a separate verified copy and blocks other users',async()=>{
+ const {repo,call}=setup();
+ const {id}=await repo.registerText('alice',{course_id:'chem',title:'녹음 전사본',content:'티엘 모듈러스'});
+ assert.equal(value(await call('alice','get_course_original_text',{material_id:id})).original_text,'티엘 모듈러스');
+ assert.equal((await call('bob','get_course_original_text',{material_id:id})).result.isError,true);
+ assert.equal((await call('alice','save_course_review_page',{material_id:id,page_num:1,raw_text:'티엘 모듈러스',corrected_text:'Thiele modulus'},false)).result.isError,true);
+ assert.equal(value(await call('alice','save_course_review_page',{material_id:id,page_num:1,raw_text:'티엘 모듈러스',corrected_text:'Thiele modulus',unresolved:['수식 근거 확인 필요']})).review_status,'needs_review');
+ assert.equal((await call('alice','finalize_course_review',{material_id:id,page_count:1})).result.isError,true);
+ value(await call('alice','save_course_review_page',{material_id:id,page_num:1,raw_text:'티엘 모듈러스',corrected_text:'Thiele modulus',unresolved:[]}));
+ value(await call('alice','finalize_course_review',{material_id:id,page_count:1}));
+ assert.equal(value(await call('alice','get_course_verified_text',{material_id:id})).pages[0].corrected_text,'Thiele modulus');
+ assert.equal((await repo.getOriginalText('alice',{material_id:id})).original_text,'티엘 모듈러스');
 });
-
-test('text transcript ingestion and scoped search/read via MCP',async()=>{
-  const r=await repo.ingestTranscript('u1',{offering_id:'current',title:'5주차 강의 전사본',text:'확산 저항과 유효계수를 설명합니다.\n\nThiele modulus 라는 표현을 사용합니다.'});
-  assert.equal(r.extract_status,'ready');
-  const list=unpack(await call('u1','list_sources',{offering_id:'current'}));
-  assert.equal(list.length,1);assert.equal(list[0].source_type,'transcript');
-  const matches=unpack(await call('u1','search_source_content',{offering_id:'current',query:'Thiele'}));
-  assert.equal(matches.length,1);assert.equal(matches[0].source_id,r.source_id);
-  assert.equal(unpack(await call('u1','search_source_content',{offering_id:'old',query:'Thiele'})).length,0);
-  const content=unpack(await call('u1','get_source_content',{source_id:r.source_id}));assert.equal(content.length,1);
-  assert.match(content[0].content,/확산 저항/);
-});
-
-test('private auth, viewer may read but not write',async()=>{
-  assert.ok(isError(await call('u3','get_course_context',{offering_id:'current'})));
-  const result=await call('u2','save_note',{offering_id:'current',title:'무단 수정',content_markdown:'데이터'});
-  assert.equal(result.result.content[0].text,'Not authorized');
-  await assert.rejects(()=>repo.ingestTranscript('u2',{offering_id:'current',title:'bad',text:'cannot edit'}),{code:'FORBIDDEN'});
-});
-
-test('save note, fetch content, optimistic revision and preserve history',async()=>{
-  const created=unpack(await call('u1','save_note',{offering_id:'current',title:'Week 5',content_markdown:'# 물질전달'}));
-  assert.equal(created.revision,1);
-  const fetched=unpack(await call('u1','get_note',{note_id:created.id}));assert.equal(fetched.content_markdown,'# 물질전달');
-  const updated=unpack(await call('u1','save_note',{offering_id:'current',note_id:created.id,expected_revision:1,title:'Week 5',content_markdown:'# 수정된 내용'}));
-  assert.equal(updated.revision,2);
-  const conflict=await call('u1','save_note',{offering_id:'current',note_id:created.id,expected_revision:1,title:'Week 5',content_markdown:'# 오래된 수정'});
-  assert.equal(conflict.result.content[0].text,'Revision conflict');
-  assert.equal((await db.prepare('SELECT count(*) AS n FROM note_versions WHERE note_id=?').bind(created.id).first()).n,2);
-});
-
-test('create job, checkpoint and read ownership',async()=>{
-  const created=unpack(await call('u1','create_job',{offering_id:'current',mode:'detailed_note',scope:'Week 5'}));
-  assert.equal(created.status,'pending');
-  const changed=unpack(await call('u1','save_checkpoint',{job_id:created.job_id,step:'sources',status:'done'}));
-  assert.deepEqual(changed.completed_steps,['sources']);
-  const fetched=unpack(await call('u1','get_job',{job_id:created.job_id}));assert.equal(fetched.status,'partial');
-  assert.equal((await call('u2','get_job',{job_id:created.job_id})).result.content[0].text,'Not authorized');
-});
-
-test('MCP parameter validation rejects improper integers and arbitrary fields',async()=>{
-  const out=await call('u1','get_source_content',{source_id:'abc',limit:200});assert.equal(out.error.code,-32602);
-  const out2=await call('u1','get_note',{note_id:'abc',sql:'DROP TABLE courses'});assert.equal(out2.error.code,-32602);
+test('PDF page count, page image and review completeness stay scoped to the owner',async()=>{
+ const {repo,call,bucket}=setup();
+ const file=new Uint8Array(90);file.set([37,80,68,70,45],0);
+ const {id}=await repo.upload('alice',{course_id:'chem',title:'2쪽 강의자료',source_type:'lecture_slides',filename:'lecture.pdf',buffer:file});
+ await repo.setPdfPageCount('alice',{material_id:id,page_count:2});
+ const raster=new Uint8Array(90);raster.set([137,80,78,71,13,10,26,10],0);
+ await repo.uploadPageImage('alice',{material_id:id,page_num:1,mime_type:'image/png',bytes:raster});
+ assert.equal(value(await call('alice','get_course_page_status',{material_id:id})).page_count,2);
+ const image=await call('alice','get_course_page_image',{material_id:id,page_num:1});
+ assert.equal(image.result.content[0].type,'image');
+ assert.deepEqual(new Uint8Array(Buffer.from(image.result.content[0].data,'base64')),raster);
+ assert.equal((await call('bob','get_course_page_image',{material_id:id,page_num:1})).result.isError,true);
+ await repo.saveReview('alice',{material_id:id,page_num:1,raw_text:'원문',corrected_text:'교정'});
+ await assert.rejects(()=>repo.finalizeReview('alice',{material_id:id,page_count:1}),/REVIEW_INCOMPLETE/);
+ await assert.rejects(()=>repo.finalizeReview('alice',{material_id:id,page_count:2}),/REVIEW_INCOMPLETE/);
+ assert.equal(bucket.map.size,2);
 });

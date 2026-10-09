@@ -16,6 +16,7 @@ dist/
 .sites-runtime/
 public/web/
 public/domain/
+public/vendor/
 *.tsbuildinfo
 .env.*
 !.env.example

@@ -1,5 +1,7 @@
 # 에쁠가속기 v0.9 통합 개발 현황 — 2026-10-09
 
+> 이 문서는 v0.9 당시 상태 기록이다. 현재 구현·배포 상태는 [V10_IMPLEMENTATION_STATUS.md](V10_IMPLEMENTATION_STATUS.md)를 본다.
+
 기준 브랜치: `Hagyurid/applespeedup / develop/aplus-v2`. 기존 `Hagyurid/study`는 읽기 전용이며 Render 자료 이전은 하지 않음.
 
 ## 반영된 코드

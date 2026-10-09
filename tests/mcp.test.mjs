@@ -1,7 +1,29 @@
-import {test} from 'node:test';import assert from 'node:assert/strict';import {handleMessage,toolSpecs} from '../sites/mcp-core.mjs';
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {handleMessage,toolSpecs} from '../sites/mcp-core.mjs';
 const msg=(method,params,id=1)=>({jsonrpc:'2.0',id,method,params});
-test('MCP init and tools metadata',async()=>{const init=await handleMessage(msg('initialize',{}));assert.equal(init.result.serverInfo.name,'aplus-accelerator');assert.equal(toolSpecs().length,29);});
-test('Unauthenticated tool discovery denied',async()=>{const r=await handleMessage(msg('tools/list',{}));assert.equal(r.error.code,-32001);});
-test('Unknown/missing args rejected',async()=>{const c={authenticate:async()=> 'u1',repo:{}};assert.equal((await handleMessage(msg('tools/call',{name:'nope'}),c)).error.code,-32602);assert.equal((await handleMessage(msg('tools/call',{name:'get_note',arguments:{}}),c)).error.code,-32602);});
-test('Expected source list tool interaction',async()=>{const c={authenticate:async()=> 'u1',repo:{listSources:async(user,args)=>[{user,offering:args.offering_id}]}};const r=await handleMessage(msg('tools/call',{name:'list_sources',arguments:{offering_id:'off2026'}}),c);assert.equal(JSON.parse(r.result.content[0].text)[0].offering,'off2026');});
-test('Failed repository does not leak secrets',async()=>{const c={authenticate:async()=> 'u1',repo:{getNote:async()=>{throw Error('db_password=secret');}}};const r=await handleMessage(msg('tools/call',{name:'get_note',arguments:{note_id:'n1'}}),c);assert.equal(r.result.isError,true);assert.doesNotMatch(r.result.content[0].text,/secret/);});
+test('Course-only MCP discovery needs verified identity',async()=>{
+ const init=await handleMessage(msg('initialize',{}));
+ assert.equal(init.result.serverInfo.name,'aplus-accelerator');
+ assert.equal((await handleMessage(msg('tools/list',{}))).error.code,-32001);
+ const result=await handleMessage(msg('tools/list',{}),{authenticate:async()=> 'u1'});
+ assert.deepEqual(result.result.tools.map(x=>x.name),toolSpecs().map(x=>x.name));
+ assert.ok(result.result.tools.some(x=>x.name==='get_course_page_image'));
+ assert.ok(result.result.tools.some(x=>x.name==='get_course_original_text'));
+ assert.ok(result.result.tools.every(x=>!['get_note','list_sources','get_source_page_image'].includes(x.name)));
+});
+test('Read-only MCP works while writes are locked; spoofed and malformed calls fail',async()=>{
+ const repo={listMaterials:async(user,{course_id})=>[{user,course_id}]};
+ const auth={authenticate:async()=> 'u1',repo,allowWrites:false};
+ const read=await handleMessage(msg('tools/call',{name:'list_course_materials',arguments:{course_id:'c1'}}),auth);
+ assert.deepEqual(JSON.parse(read.result.content[0].text),[{user:'u1',course_id:'c1'}]);
+ const write=await handleMessage(msg('tools/call',{name:'save_course_review_page',arguments:{material_id:'m1',page_num:1,raw_text:'x',corrected_text:'x'}}),auth);
+ assert.equal(write.result.isError,true);
+ assert.equal((await handleMessage(msg('tools/call',{name:'list_sources',arguments:{offering_id:'o1'}}),auth)).error.code,-32602);
+ assert.equal((await handleMessage(msg('tools/call',{name:'get_course_page_image',arguments:{material_id:'m1',page_num:0}}),auth)).error.code,-32602);
+});
+test('Repository errors never expose private data through course tools',async()=>{
+ const repo={getOriginalText:async()=>{throw Error('db_password=secret');}};
+ const r=await handleMessage(msg('tools/call',{name:'get_course_original_text',arguments:{material_id:'m1'}}),{authenticate:async()=> 'u1',repo});
+ assert.equal(r.result.isError,true);assert.doesNotMatch(r.result.content[0].text,/secret/);
+});

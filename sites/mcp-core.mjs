@@ -16,6 +16,7 @@ const tools = [
  {name:'get_course_original_text',description:'Read original transcript text for cross-checking, not for generated content',inputSchema:{type:'object',properties:{material_id:{type:'string'}},required:['material_id'],additionalProperties:false},annotations:{readOnlyHint:true}},
  {name:'get_course_verified_text',description:'Get GPT-reviewed OCR/transcript corrected text only, never original PDF bytes',inputSchema:{type:'object',properties:{material_id:{type:'string'}},required:['material_id'],additionalProperties:false},annotations:{readOnlyHint:true}},
  {name:'get_course_page_image',description:'Read original PNG/JPEG page image for ChatGPT handwriting recognition',inputSchema:{type:'object',properties:{material_id:{type:'string'},page_num:{type:'integer',minimum:1}},required:['material_id'],additionalProperties:false},annotations:{readOnlyHint:true}},
+ {name:'get_course_page_status',description:'Read the actual PDF page count and which page previews are ready for OCR',inputSchema:{type:'object',properties:{material_id:{type:'string'}},required:['material_id'],additionalProperties:false},annotations:{readOnlyHint:true}},
  {name:'save_course_review_page',description:'Save original interpretation, corrected text, evidence and unresolved OCR concerns',inputSchema:{type:'object',properties:{material_id:{type:'string'},page_num:{type:'integer'},raw_text:{type:'string'},corrected_text:{type:'string'},evidence_ids:{type:'array'},unresolved:{type:'array'}},required:['material_id','page_num','raw_text','corrected_text'],additionalProperties:false},annotations:{readOnlyHint:false}},
  {name:'finalize_course_review',description:'Mark a full course material available for GPT only after all pages are corrected',inputSchema:{type:'object',properties:{material_id:{type:'string'},page_count:{type:'integer'}},required:['material_id','page_count'],additionalProperties:false},annotations:{readOnlyHint:false}},
  {name:'start_course_generation',description:'Create generation using explicitly checked, reviewed files and require an outline',inputSchema:{type:'object',properties:{course_id:{type:'string'},mode:{type:'string'},scope:{type:'string'},source_ids:{type:'array'}},required:['course_id','mode','source_ids'],additionalProperties:false},annotations:{readOnlyHint:false}},
@@ -33,20 +34,24 @@ const tools = [
  {name:'save_generated_section',description:'Persist each generated section AND automatically save or update the complete draft note; no separate save command required.',inputSchema:{type:'object',properties:{run_id:{type:'string'},section_index:{type:'integer',minimum:1},content_markdown:{type:'string'}},required:['run_id','section_index','content_markdown'],additionalProperties:false},annotations:{readOnlyHint:false,destructiveHint:false}},
  {name:'get_generation_progress',description:'Inspect saved outline, saved sections and note ID to resume without regenerating earlier work.',inputSchema:{type:'object',properties:{run_id:{type:'string'}},required:['run_id'],additionalProperties:false},annotations:{readOnlyHint:true}},
 ];
-const invoke={list_course_materials:'listMaterials',get_course_original_text:'getOriginalText',get_course_verified_text:'verifiedText',get_course_page_image:'getPageImage',save_course_review_page:'saveReview',finalize_course_review:'finalizeReview',start_course_generation:'startJob',save_course_outline:'saveOutline',save_course_part:'savePart',save_course_problem_pack:'savePack',save_course_casio_project:'saveCasio',get_course_context:'getCourseContext',list_sources:'listSources',search_source_content:'searchSourceContent',get_source_content:'getSourceContent',get_note:'getNote',save_note:'saveNote',create_job:'createJob',get_job:'getJob',save_checkpoint:'saveCheckpoint',get_verified_source_text:'getVerifiedSourceText',get_source_page_image:'getSourcePageImage',get_reviewed_page:'getReviewedPage',save_reviewed_page:'saveReviewedPage',finalize_source_review:'finalizeSourceReview',begin_generation:'beginGeneration',save_generation_outline:'saveGenerationOutline',save_generated_section:'saveGeneratedSection',get_generation_progress:'getGenerationProgress'};
+// The Site plugin exposes the course-first workflow only. Legacy offering tools
+// are kept for old HTTP data compatibility, never advertised to ChatGPT.
+const invoke={list_course_materials:'listMaterials',get_course_original_text:'getOriginalText',get_course_verified_text:'verifiedText',get_course_page_image:'getPageImage',get_course_page_status:'pageStatus',save_course_review_page:'saveReview',finalize_course_review:'finalizeReview',start_course_generation:'startJob',save_course_outline:'saveOutline',save_course_part:'savePart',save_course_problem_pack:'savePack',save_course_casio_project:'saveCasio'};
+const activeTools=tools.filter(t=>Object.hasOwn(invoke,t.name));
 function jsonrpc(id,result){return {jsonrpc:'2.0',id,result};}
 function error(id,code,message){return {jsonrpc:'2.0',id,error:{code,message}};}
-export async function handleMessage(body,{authenticate,repo}={}){
+export async function handleMessage(body,{authenticate,repo,allowWrites=true}={}){
  if(!body||body.jsonrpc!=='2.0'||typeof body.method!=='string')return error(body?.id??null,-32600,'Invalid Request');
  if(body.method==='initialize')return jsonrpc(body.id,{protocolVersion:'2025-03-26',capabilities:{tools:{}},serverInfo:{name:'aplus-accelerator',version:'0.5.0'}});
  if(body.method==='notifications/initialized')return null;
  if(body.method==='ping')return jsonrpc(body.id,{});
  // Prevent unauthenticated tools/list and calls, even if the site URL is public.
  const userId=await authenticate?.();if(!userId)return error(body.id,-32001,'Authentication required');
- if(body.method==='tools/list')return jsonrpc(body.id,{tools});
+ if(body.method==='tools/list')return jsonrpc(body.id,{tools:activeTools});
  if(body.method!=='tools/call')return error(body.id,-32601,'Method not found');
  const name=body.params?.name,args=body.params?.arguments||{};
- const tool=tools.find(t=>t.name===name);if(!tool)return error(body.id,-32602,'Unknown tool');
+ const tool=activeTools.find(t=>t.name===name);if(!tool)return error(body.id,-32602,'Unknown tool');
+ if(!allowWrites&&!tool.annotations?.readOnlyHint)return jsonrpc(body.id,{content:[{type:'text',text:'Site writes are locked'}],isError:true});
  for(const required of tool.inputSchema.required){if(args[required]===undefined||args[required]===null||args[required]==='')return error(body.id,-32602,`Missing ${required}`);}
  if(Object.keys(args).some(k=>!(k in tool.inputSchema.properties)))return error(body.id,-32602,'Unexpected parameter');
  for(const [key,val] of Object.entries(args)){const schema=tool.inputSchema.properties[key];if(schema.type==='string' && (typeof val!=='string'||val.length>500000))return error(body.id,-32602,`Invalid ${key}`);if(schema.type==='integer' && (!Number.isInteger(val)||(schema.minimum!==undefined&&val<schema.minimum)||(schema.maximum!==undefined&&val>schema.maximum)))return error(body.id,-32602,`Invalid ${key}`);if(schema.type==='array' && (!Array.isArray(val)||val.length>80))return error(body.id,-32602,`Invalid ${key}`);}
@@ -57,4 +62,4 @@ export async function handleMessage(body,{authenticate,repo}={}){
    return jsonrpc(body.id,{content:[{type:'text',text:publicErr}],isError:true});
  }
 }
-export function toolSpecs(){return tools;}
+export function toolSpecs(){return activeTools;}

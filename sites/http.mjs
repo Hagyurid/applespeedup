@@ -20,7 +20,7 @@ async function readBody(request,max){
 }
 const decode=(b)=>JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(b));
 function statusOf(err){if(['FORBIDDEN'].includes(err?.code))return 403;if(err?.code==='NOT_FOUND')return 404;if(err?.code==='REVISION_CONFLICT')return 409;if(err?.code==='REVIEW_INCOMPLETE'||err?.code==='OUTLINE_REQUIRED')return 422;if(['BAD_REQUEST','BAD_FILE'].includes(err?.code))return 400;return 500;}
-export function createHttpHandler({db,bucket,authenticate,allowedOrigin}={}){
+export function createHttpHandler({db,bucket,authenticate,allowedOrigin,writesEnabled=true}={}){
   if(!db||typeof authenticate!=='function')throw Error('Verified authentication and a D1 binding are required');
   const repo={...createCourseLibrary(db,bucket),...createD1Repository(db),...createAiPipeline(db,bucket)};
   return async function handle(request){
@@ -46,7 +46,7 @@ export function createHttpHandler({db,bucket,authenticate,allowedOrigin}={}){
         let body;try{body=decode(raw);}catch{return fail(400,'Invalid JSON');}
         // No batch messages on the modern Streamable HTTP transport.
         if(Array.isArray(body))return fail(400,'Batch requests not accepted');
-        const result=await handleMessage(body,{authenticate:async()=>userId,repo});
+        const result=await handleMessage(body,{authenticate:async()=>userId,repo,allowWrites:writesEnabled});
         if(result===null)return new Response(null,{status:202,headers:{'Cache-Control':'no-store'}});
         return json(result);
       }

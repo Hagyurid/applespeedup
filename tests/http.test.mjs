@@ -34,7 +34,7 @@ test('Cross-origin write and malformed payload blocked',async()=>{
   assert.equal((await s.request('/mcp',{method:'GET'})).status,405);
   assert.equal((await s.request('/mcp',{method:'POST',data:{jsonrpc:'2.0',id:1,method:'initialize'},headers:{accept:'application/json'}})).status,406);
 });
-test('Site HTTP API: create course, offering, transcript, searchable through MCP, save note',async()=>{
+test('Legacy HTTP records retain their scoped search and revision history',async()=>{
   const s=suite();
   const c=await s.request('/api/courses',{method:'POST',data:{name:'촉매반응공학',characteristics:'계산형'}});
   assert.equal(c.status,201);const cid=(await c.json()).id;
@@ -46,10 +46,9 @@ test('Site HTTP API: create course, offering, transcript, searchable through MCP
   assert.equal(source.status,201);const src=(await source.json()).source_id;
   assert.equal((await s.request(`/api/sources?offering_id=${oldId}`)).status,200);
   assert.deepEqual(await (await s.request(`/api/sources?offering_id=${oldId}`)).json(),[]);
-  const tool=await s.request('/mcp',{method:'POST',headers:{accept:'application/json, text/event-stream'},
-    data:{jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'search_source_content',arguments:{offering_id:oid,query:'Thiele'}}}});
+  const tool=await s.request(`/api/search?offering_id=${oid}&query=Thiele`);
   assert.equal(tool.status,200);
-  const results=JSON.parse((await tool.json()).result.content[0].text);
+  const results=await tool.json();
   assert.equal(results[0].source_id,src);
   const note=await s.request('/api/notes',{method:'POST',data:{offering_id:oid,title:'Week 5',content_markdown:'# 유효 계수'}});
   assert.equal(note.status,201);const n=await note.json();
