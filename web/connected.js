@@ -3,6 +3,7 @@ import {createDraftStore} from './local-drafts.js';
 import {DEFAULT_PRESETS} from '../domain/core.mjs';
 import {createSolvePad} from './solvepad.js?v=pen-input-1';
 import {bindWorkspaceUI} from './workspace-ui.js';
+import {printProblemPack,clearProblemPrint} from './problem-print.js';
 import {preparePdfPages} from './pdf-pages.js';
 import {renderNoteMarkdown,noteMathReady} from './note-render.js';
 const $=id=>document.getElementById(id);
@@ -301,7 +302,7 @@ function insertNote(before,after=''){
 $('noteHeading').onclick=()=>insertNote('## ');
 $('noteBold').onclick=()=>insertNote('**','**');
 $('notePageBreak').onclick=()=>insertNote('\n\n<!-- pagebreak -->\n\n');
-$('printNote').onclick=async()=>{state.showNotePreview=true;renderNotePreview();await noteMathReady();await document.fonts.ready;window.print();};
+$('printNote').onclick=async()=>{clearProblemPrint();state.showNotePreview=true;renderNotePreview();await noteMathReady();await document.fonts.ready;window.print();};
 $('noteBody').addEventListener('input',()=>{if(state.showNotePreview)renderNotePreview();});
 $('pickerSearch').oninput=renderPicker;$('pickerType').onchange=renderPicker;
 $('clearSelected').onclick=()=>{state.selectedIds.clear();renderPicker();refreshPrompt();};
@@ -334,6 +335,15 @@ const listRefreshed=async()=>{
  if(casio.some(x=>x.id===selectedCasio))$('casioSelect').value=selectedCasio;
 };
 $('refreshPacks').onclick=()=>run(listRefreshed,'문제팩 목록을 갱신했습니다.');
+async function printSelectedPack(mode){
+ const id=$('packSelect').value,selectedCourse=course()?.id;
+ if(!id||!selectedCourse)throw Error('과목과 인쇄할 문제팩을 선택하세요.');
+ const record=await call('/api/v2/pack?id='+encodeURIComponent(id));
+ if(course()?.id!==selectedCourse)throw Error('선택한 과목이 바뀌었습니다. 다시 선택하세요.');
+ await printProblemPack(record,mode,course()?.name||'');
+}
+$('printPackProblems').onclick=()=>run(()=>printSelectedPack('problems'),'문제 인쇄 창을 열었습니다. PDF로 저장을 선택하세요.');
+$('printPackSolutions').onclick=()=>run(()=>printSelectedPack('solutions'),'해설 인쇄 창을 열었습니다. PDF로 저장을 선택하세요.');
 $('refreshCasio').onclick=()=>run(listRefreshed,'프로젝트 목록을 갱신했습니다.');
 $('loadPack').onclick=()=>run(async()=>{
  const id=$('packSelect').value;if(!id)throw Error('과목별 문제팩이 없습니다. GPT 제작실에서 시험형 문제집을 생성하세요.');

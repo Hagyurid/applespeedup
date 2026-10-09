@@ -179,6 +179,8 @@
             <label class="field">현재 과목의 문제팩<select id="packSelect" aria-label="문제팩 선택"></select></label>
             <button class="ghost small" id="refreshPacks" type="button">목록 새로고침</button>
             <button class="primary small" id="loadPack" type="button">문제풀이 시작</button>
+            <button class="ghost small" id="printPackProblems" type="button">문제 PDF</button>
+            <button class="ghost small" id="printPackSolutions" type="button">해설 PDF</button>
           </div>
           <div id="solveEmpty" class="card workspace-card">문제팩을 선택하면 여기에 풀이 공간이 열립니다.</div>
           <div id="solveWorkspace" class="solve-layout" hidden>
@@ -238,6 +240,6 @@
       <button type="button" class="mobile-nav-item" data-page-target="casio" aria-controls="page-casio"><span aria-hidden="true">∑</span><small>CASIO</small></button>
     </nav>
   </div>
-  <script type="module" src="connected.js?v=workspace-pen-1"></script>
+  <script type="module" src="connected.js?v=pack-print-1"></script>
 </body>
 </html>

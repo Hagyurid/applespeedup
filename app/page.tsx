@@ -10,6 +10,6 @@ export default async function Home() {
   return <>
     <div dangerouslySetInnerHTML={{ __html: workspaceBody }} />
     <footer className="account-footer"><a href={chatGPTSignOutPath('/')} target="_top">로그아웃</a></footer>
-    <Script type="module" src="/web/connected.js?v=workspace-pen-1" strategy="afterInteractive" />
+    <Script type="module" src="/web/connected.js?v=pack-print-1" strategy="afterInteractive" />
   </>;
 }

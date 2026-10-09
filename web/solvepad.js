@@ -1,19 +1,11 @@
 import {createDraftStore} from './local-drafts.js';
 import {renderNoteMarkdown,noteMathReady} from './note-render.js';
+import {answerText,questionTitle,solutionText} from '../domain/problem-presentation.mjs';
 /** Native course-owned SolvePad. Save results and ink together on navigation. */
 const $=id=>document.getElementById(id);
 const asText=value=>String(value??'');
-const answerText=q=>q.answer?.value??q.answer?.text??q.answer??'';
-function questionTitle(q,index){return asText(q.title||q.section||`문제 ${index+1}`);}
 function attemptData(row){
   try{return row?.data_json?JSON.parse(row.data_json):{}}catch{return {}}
-}
-function solutionText(q){
-  const s=q.solution;
-  if(typeof s==='string')return s;
-  if(!s||typeof s!=='object')return '등록된 해설이 없습니다.';
-  return [['핵심 개념',s.concepts],['풀이',s.actualSolution],['주의',s.cautions],['팁',s.tips]]
-    .filter(([,v])=>v).map(([name,v])=>name+'\n'+(Array.isArray(v)?v.join('\n'):asText(v))).join('\n\n')||'등록된 해설이 없습니다.';
 }
 async function renderPrompt(target,input){
   target.classList.add('solve-math-content');

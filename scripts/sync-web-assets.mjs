@@ -1,8 +1,8 @@
 import { mkdirSync, copyFileSync } from 'node:fs';
 mkdirSync('public/web', { recursive: true });
 mkdirSync('public/domain', { recursive: true });
-for (const file of ['connected.js', 'workspace-ui.js', 'local-drafts.js', 'source-upload.js', 'connected.css', 'solvepad.js', 'solvepad.css', 'pdf-pages.js', 'note-render.js', 'styles.css']) copyFileSync(`web/${file}`, `public/web/${file}`);
-for (const file of ['core.mjs','note-math.mjs','note-presentation.mjs']) copyFileSync(`domain/${file}`, `public/domain/${file}`);
+for (const file of ['connected.js', 'workspace-ui.js', 'problem-print.js', 'local-drafts.js', 'source-upload.js', 'connected.css', 'solvepad.js', 'solvepad.css', 'pdf-pages.js', 'note-render.js', 'styles.css']) copyFileSync(`web/${file}`, `public/web/${file}`);
+for (const file of ['core.mjs','note-math.mjs','note-presentation.mjs','problem-presentation.mjs']) copyFileSync(`domain/${file}`, `public/domain/${file}`);
 mkdirSync('public/vendor/pdfjs', { recursive: true });
 mkdirSync('public/vendor/katex', { recursive: true });
 for (const file of ['pdf.mjs','pdf.worker.mjs']) copyFileSync(`node_modules/pdfjs-dist/build/${file}`,`public/vendor/pdfjs/${file}`);

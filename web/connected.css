@@ -353,3 +353,18 @@ body{background:#f6f7f9}
 }
 @media screen and (max-width:700px){.workspace-view-controls{gap:4px}.workspace-view-controls button{font-size:.65rem;padding:6px}.topbar-status{display:none}}
 @media print{.workspace-view-controls{display:none!important}.workspace-shell.is-study-workspace{position:static!important;inset:auto!important;width:auto!important;height:auto!important;overflow:visible!important}}
+
+@media screen{#packPrint{display:block!important;position:fixed;top:0;left:-10000px;width:178mm;max-height:none;overflow:visible;visibility:hidden;pointer-events:none}}
+@media print{
+ body[data-print-mode]>:not(#packPrint){display:none!important}
+ body[data-print-mode] #packPrint{display:block!important;position:static!important;inset:auto!important;visibility:visible!important;box-sizing:border-box;width:178mm!important;max-width:100%!important;height:auto!important;min-height:0!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:0!important;border:0!important;background:#fff!important;font-size:11pt!important;line-height:1.65!important;color:#000!important}
+ #packPrint>h1{font-size:17pt;margin:0 0 4mm}
+ #packPrint>p{font-size:10pt;margin:0 0 8mm;color:#555}
+ #packPrint h2{font-size:12pt;margin:0 0 4mm;break-after:avoid}
+ #packPrint .pack-print-problem{break-inside:avoid-page;page-break-inside:avoid;margin:0 0 8mm}
+ #packPrint .pack-print-solution{margin:0 0 8mm}
+ #packPrint .pack-answer-space{height:60mm;margin-top:5mm;border-top:1px solid #ddd;border-bottom:1px solid #ddd;break-inside:avoid-page;page-break-inside:avoid}
+ #packPrint .pack-answer-space small{font-size:9pt;color:#777}
+ #packPrint .katex{font-size:1.1em!important}
+ #packPrint ol{padding-left:1.5em}
+}
