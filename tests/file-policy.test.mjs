@@ -19,13 +19,15 @@ test('DOCX/HWP/HWPX/general TXT and MD use unchanged text without a review',asyn
  const formats=[['docx',bytes(documents.docx),'교정하지 않은 DOCX 원문 123'],['hwpx',bytes(documents.hwpx),'교정하지 않은 HWPX 원문 456'],['hwp',hwpFixture(),'한글 원문 유지'],['txt',new TextEncoder().encode('원문  오타 그대로'),'원문  오타 그대로'],['md',new TextEncoder().encode('# 원문\n오타'),'# 원문\n오타']];
  for(const [ext,data,text] of formats){const m=await repo.upload('a',{course_id:'c',title:ext,source_type:'other',filename:'original.'+ext,buffer:data});const content=await repo.generationSource('a',{material_id:m.id});assert.equal(content.original_text,text);assert.equal(content.used_original,true);const j=await repo.startJob('a',{course_id:'c',mode:'detailed_note',source_ids:[m.id]});assert.ok(j.id);await assert.rejects(()=>repo.generationSource('b',{material_id:m.id}),/NOT_FOUND/);}
 });
-test('transcript bypass is explicit, persisted with extra requests, and keeps a warning in the note',async()=>{
+test('transcripts require review and optional requests persist',async()=>{
  const {repo}=setup();const m=await repo.registerText('a',{course_id:'c',title:'전사본',content:'원본 오타'});
  await assert.rejects(()=>repo.startJob('a',{course_id:'c',mode:'detailed_note',source_ids:[m.id]}),/REVIEW_INCOMPLETE/);
- const j=await repo.startJob('a',{course_id:'c',mode:'detailed_note',source_ids:[m.id],original_source_ids:[m.id],additional_requests:'  유도 과정 포함  '});
- assert.equal((await repo.generationSource('a',{material_id:m.id,use_original:true})).original_text,'원본 오타');
- const p=await repo.getJobProgress('a',{job_id:j.id});assert.deepEqual(p.original_source_ids,[m.id]);assert.equal(p.additional_requests,'유도 과정 포함');
- await repo.saveOutline('a',{job_id:j.id,sections:[{title:'단원'}]});await repo.savePart('a',{job_id:j.id,section_index:1,content_markdown:'본문'});assert.match((await repo.getNote('a',{id:j.id})).content_markdown,/검수 없이 전사본 원문/);
+ await assert.rejects(()=>repo.startJob('a',{course_id:'c',mode:'detailed_note',source_ids:[m.id],original_source_ids:[m.id]}),/BAD_REQUEST/);
+ await assert.rejects(()=>repo.generationSource('a',{material_id:m.id,use_original:true}),/BAD_REQUEST/);
+ await repo.saveReview('a',{material_id:m.id,page_num:1,raw_text:'원본 오타',corrected_text:'교정본'});
+ const j=await repo.startJob('a',{course_id:'c',mode:'detailed_note',source_ids:[m.id],additional_requests:'  유도 과정 포함  '});
+ assert.equal((await repo.generationSource('a',{material_id:m.id})).pages[0].corrected_text,'교정본');
+ const p=await repo.getJobProgress('a',{job_id:j.id});assert.deepEqual(p.original_source_ids,[]);assert.equal(p.additional_requests,'유도 과정 포함');
  await assert.rejects(()=>repo.startJob('a',{course_id:'c',mode:'detailed_note',source_ids:[m.id],additional_requests:'x'.repeat(4001)}),/BAD_REQUEST/);
 });
 test('PDF/images/PPTX cannot bypass reviews and each PPTX slide has its own original text',async()=>{
@@ -37,4 +39,28 @@ test('PDF/images/PPTX cannot bypass reviews and each PPTX slide has its own orig
 test('damaged and encrypted Office files never masquerade as readable text',()=>{
  assert.equal(extractOriginal(new Uint8Array([80,75,3,4]),'application/vnd.hancom.hwpx').text,null);
  const h=hwpFixture();new DataView(h.buffer).setUint32(3*512+36,2,true);assert.equal(extractOriginal(h,'application/x-hwp').text,null);
+});
+test('automatic names and generated reference selection preserve course scope and document revisions',async()=>{
+ const {repo}=setup();
+ const m=await repo.upload('a',{course_id:'c',source_type:'other',filename:'실제자료.md',buffer:new TextEncoder().encode('# 강의 원문')});
+ assert.equal((await repo.listMaterials('a',{course_id:'c'}))[0].title,'실제자료.md');
+ const transcript=await repo.registerText('a',{course_id:'c',content:'직접 입력'});assert.match((await repo.listMaterials('a',{course_id:'c'})).find(x=>x.id===transcript.id).title,/전사본 ·/);
+ const j=await repo.startJob('a',{course_id:'c',mode:'detailed_note',source_ids:[m.id]});await repo.saveOutline('a',{job_id:j.id,sections:[{title:'기초'}]});
+ assert.ok(!(await repo.listMaterials('a',{course_id:'c'})).some(x=>x.source_type==='generated_note'));
+ await repo.savePart('a',{job_id:j.id,section_index:1,content_markdown:'생성 정리본'});
+ const ref=(await repo.listMaterials('a',{course_id:'c'})).find(x=>x.source_type==='generated_note');assert.equal(ref.id,'generated:'+j.id);
+ const next=await repo.startJob('a',{course_id:'c',mode:'exam_cram',source_ids:[ref.id]});assert.equal(next.document_revisions[ref.id],ref.revision);
+ const content=await repo.generationSource('a',{material_id:ref.id,expected_revision:ref.revision});assert.match(content.original_text,/생성 정리본/);assert.equal(content.provenance,'gpt_generated_reference');
+ await assert.rejects(()=>repo.generationSource('b',{material_id:ref.id}),/NOT_FOUND/);
+ const doc=await repo.getNote('a',{id:j.id});await repo.saveNote('a',{course_id:'c',id:j.id,title:doc.title,expected_revision:doc.revision,content_markdown:'수정'});
+ await assert.rejects(()=>repo.getJobProgress('a',{job_id:next.id}),/REVISION_CONFLICT/);
+});
+
+test('saved problem packs and CASIO projects can be selected without cross-course access or silent edits',async()=>{
+ const {repo}=setup();
+ const pack=await repo.savePack('a',{course_id:'c',title:'문제팩',pack:{schemaVersion:'solvepad.problemPack.v5',questions:[{id:'q',promptMd:'문제',answer:{value:'1'}}]}});
+ const casio=await repo.saveCasio('a',{course_id:'c',title:'계산기',program_text:'1->A'});
+ for(const ref of ['generated:pack:'+pack.id,'generated:casio:'+casio.id]){const data=await repo.generationSource('a',{material_id:ref});assert.equal(data.provenance,'gpt_generated_reference');await assert.rejects(()=>repo.generationSource('b',{material_id:ref}),/NOT_FOUND/);}
+ const ref='generated:casio:'+casio.id;const j=await repo.startJob('a',{course_id:'c',mode:'calculator',source_ids:[ref]});
+ await repo.saveCasio('a',{course_id:'c',id:casio.id,title:'수정',program_text:'2->A'});await assert.rejects(()=>repo.getJobProgress('a',{job_id:j.id}),/REVISION_CONFLICT/);
 });

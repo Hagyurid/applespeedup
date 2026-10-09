@@ -23,7 +23,8 @@ description: 에쁠가속기 Sites 플러그인으로 과목별 PDF OCR·전사�
 
 - PDF·PPTX·이미지는 원본을 검토하고 저장된 검수본을 사용한다. PPTX는 슬라이드별 원문과 삽입 그림을 읽되 전체 렌더링이 제공된 것으로 주장하지 않는다. 배치·수식·미지원 도형을 확인하지 못하면 `unresolved`에 남기고 필요 시 PDF 변환본을 요청한다.
 - DOCX·HWP·HWPX·일반 TXT/MD는 `get_course_generation_source`의 원문을 교정 없이 사용한다. 읽기 오류이면 사용했다고 주장하지 않는다. 텍스트 밖의 그림·수식 개체는 별도 확인이 필요하다.
-- 전사본은 기본적으로 검수본을 사용한다. 사용자가 원문 사용을 선택한 전사본만 `use_original: true`로 읽고 작업의 `original_source_ids`에 넣는다. PDF·PPT·이미지에는 원문 우회를 적용하지 않는다.
+- 전사본은 PDF·PPT·이미지와 같이 검수 저장본만 사용한다. 원문 읽기는 검수용이며 제작에서 원문 우회를 적용하지 않는다.
+- `generated:`로 시작하는 자료 ID는 GPT 생성 문서다. 보조 자료로 읽고 원래 강의 범위를 우선한다. 작업의 `document_revisions`에 맞춰 `get_course_generation_source.expected_revision`을 지정한다. 수정 충돌이면 멈추고 최신 자료를 확인한다.
 - 선택 입력인 추가 요청사항은 `start_course_generation.additional_requests`에 저장하고 이어하기의 같은 값을 유지한다.
 
 ## 생성과 저장

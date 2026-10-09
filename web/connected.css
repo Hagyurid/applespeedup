@@ -204,3 +204,13 @@ body{background:#f6f7f9}
 #casioForm{margin:0}
 #casioForm textarea{min-height:100px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre;overflow-x:auto}
 @media(max-width:700px){.tool-sync-bar{gap:8px;padding:11px}.tool-sync-bar .field{min-width:100%}.tool-sync-bar button{flex:1 1 40%}}
+
+.material-group{display:block!important;padding:12px!important;border:1px solid #e7e9ed;border-radius:12px}
+.material-group h3{font-size:1rem;margin:0 0 10px}
+.material-items{list-style:none;padding:0;margin:0;display:grid;gap:10px}
+.material-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 0;border-top:1px solid #e7e9ed}
+.material-row>span{flex:1 1 100%;min-width:0}
+.material-name{display:block;font-size:1rem;line-height:1.5;overflow-wrap:anywhere}
+.material-meta{display:block;font-size:.875rem;color:#606875;line-height:1.5;margin-top:3px}
+.picker-row{font-size:1rem;padding-left:0}
+.picker-group-title{font-size:1rem}
