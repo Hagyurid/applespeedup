@@ -24,7 +24,7 @@ export function createSolvePad({call,json,notify,onError}){
   const canvas=$('solveInk'),ctx=canvas.getContext('2d');
   const s={packId:null,pack:null,questions:[],index:0,pageIndex:0,attempts:new Map(),
     pages:[[]],answer:'',result:'',bookmarked:false,tool:'pen',stroke:null,pointer:null,
-    dirty:false,timer:null,saving:Promise.resolve(),writable:false,loadToken:0,hintIndex:0};
+    dirty:false,timer:null,saving:Promise.resolve(),writable:false,loadToken:0,hintIndex:0,revealMode:null};
   let drafts=createDraftStore(null),pending=null,transitioning=false,change=0,conflicted=false;
   let transitionDone=Promise.resolve();
   const revisions=new Map();
@@ -183,7 +183,7 @@ export function createSolvePad({call,json,notify,onError}){
     $('solveBookmark').textContent=s.bookmarked?'★ 북마크 해제':'☆ 북마크';
     $('solveBookmark').setAttribute('aria-pressed',String(s.bookmarked));
     renderResult();
-    $('solveReveal').hidden=true;$('solveReveal').replaceChildren();
+    closeReveal();
 
     status(s.dirty?'문제·화면 이동 시 저장':s.attempts.has(asText(q.id))?'사이트에 저장됨':'문제·화면 이동 시 저장');
     renderList();redraw();
@@ -239,14 +239,27 @@ export function createSolvePad({call,json,notify,onError}){
   $('solveCorrect').onclick=()=>recordResult('correct');
   $('solveWrong').onclick=()=>recordResult('wrong');
   $('solveUnmarked').onclick=()=>recordResult('');
+  function closeReveal(){
+    s.revealMode=null;$('solveReveal').hidden=true;$('solveReveal').replaceChildren();
+    $('solveHint').setAttribute('aria-expanded','false');$('solveSolution').setAttribute('aria-expanded','false');
+    $('solveHint').textContent='힌트';$('solveSolution').textContent='해설 보기';
+  }
+  function reveal(mode){
+    if(s.revealMode===mode){closeReveal();return null;}
+    closeReveal();s.revealMode=mode;const box=$('solveReveal');box.hidden=false;
+    const id=mode==='hint'?'solveHint':'solveSolution';$(id).setAttribute('aria-expanded','true');$(id).textContent=mode==='hint'?'힌트 닫기':'해설 닫기';
+    const close=document.createElement('button');close.type='button';close.className='ghost small';close.textContent='닫기';close.onclick=()=>{closeReveal();$(id).focus?.();};box.append(close);
+    return box;
+  }
+  $('solveHint').setAttribute('aria-controls','solveReveal');$('solveSolution').setAttribute('aria-controls','solveReveal');
   $('solveHint').onclick=()=>{
+    const box=reveal('hint');if(!box)return;
     const hints=current().hints||[];
-    const box=$('solveReveal');box.hidden=false;box.replaceChildren();
     const h=document.createElement('h3');h.textContent='힌트';box.append(h);
     const p=document.createElement('div');box.append(p);void renderPrompt(p,hints.length?hints[Math.min(s.hintIndex++,hints.length-1)]:'등록된 힌트가 없습니다.');
   };
   $('solveSolution').onclick=()=>{
-    const box=$('solveReveal');box.hidden=false;box.replaceChildren();
+    const box=reveal('solution');if(!box)return;
     const h=document.createElement('h3');h.textContent='해설';box.append(h);
     const q=current(),answer=document.createElement('div'),p=document.createElement('div');box.append(answer,p);void renderPrompt(answer,'**정답**\n\n'+asText(q.answer?.displayMd??answerText(q)));void renderPrompt(p,solutionText(q));
   };

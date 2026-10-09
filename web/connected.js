@@ -23,6 +23,7 @@ function showPage(page,{push=false,focus=false}={}){
   const active=pageNames[page]?page:'courses';
   if(visiblePage==='solvepad'&&active!=='solvepad')void pad.saveCurrent().catch(e=>fail('풀이 저장 실패: '+e.message));
   visiblePage=active;
+  document.body.dataset.workspacePage=active;
   for(const panel of document.querySelectorAll('[data-page-panel]'))panel.hidden=panel.dataset.pagePanel!==active;
   for(const button of document.querySelectorAll('[data-page-target]')){
     const selected=button.dataset.pageTarget===active;button.classList.toggle('active',selected);
@@ -52,6 +53,17 @@ async function call(path,options={}){
 }
 const json=data=>({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
 const pad=createSolvePad({call,json,notify:setStatus,onError:fail});
+function bindCollapse(buttonId,targetId,container,collapsedClass,label){
+ const button=$(buttonId),target=$(targetId);
+ button.onclick=()=>{const collapsed=button.getAttribute('aria-expanded')==='true';
+  target.hidden=collapsed;container.classList.toggle(collapsedClass,collapsed);
+  button.setAttribute('aria-expanded',String(!collapsed));button.textContent=label+(collapsed?' 펼치기':' 접기');
+ };
+}
+bindCollapse('toggleWorkspace','workspaceSidebar',document.querySelector('.workspace-shell'),'sidebar-collapsed','메뉴');
+bindCollapse('toggleNoteList','noteListPanel',document.querySelector('.notes-layout'),'list-collapsed','목록');
+bindCollapse('toggleProblemList','solveIndex',$('solveWorkspace'),'list-collapsed','목록');
+bindCollapse('toggleProblemView','solveQuestionPanel',$('solveSheet'),'question-collapsed','문제');
 const opt=(select,items,label)=>{select.replaceChildren();for(const x of items)select.add(new Option(label(x),x.id));};
 const empty=text=>{const li=document.createElement('li');li.textContent=text;return li;};
 const types={generated_note:'GPT 생성 자료',generated_pack:'GPT 생성 자료',generated_casio:'GPT 생성 자료',transcript:'전사본',lecture_slides:'강의자료',past_exam:'기출·시험자료',textbook:'교재·참고자료',exam_trend:'기출 경향',syllabus:'강의계획서',other:'기타'};

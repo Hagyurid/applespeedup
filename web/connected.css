@@ -95,7 +95,7 @@ body{background:#f6f7f9}
 .account-footer a{color:#7a7e88;text-decoration:none}
 .account-footer a:hover{color:#dc414a}
 
-@media(max-width:1180px){
+@media screen and (max-width:1180px){
   .source-layout,.gpt-layout,.notes-layout{grid-template-columns:1fr}
   .prompt-card textarea{min-height:300px}
   .note-list-card,.library-card{min-height:0}
@@ -103,7 +103,7 @@ body{background:#f6f7f9}
   .fact-grid .action-button{width:100%}
 }
 
-@media(max-width:860px){
+@media screen and (max-width:860px){
   .workspace-shell{display:block;min-height:100vh}
   .workspace-sidebar{display:none}
   .workspace-topbar{min-height:64px;padding:9px 16px;gap:11px}
@@ -123,14 +123,14 @@ body{background:#f6f7f9}
   .account-footer{position:static;width:auto;text-align:center;padding:0 16px calc(86px + env(safe-area-inset-bottom));font-size:.75rem;background:#f6f7f9}
 }
 
-@media(max-width:700px){
+@media screen and (max-width:700px){
   .course-layout{grid-template-columns:1fr}
   .page-wide{grid-column:auto}
   .fact-grid{grid-template-columns:1fr}
   .fact-grid .field{margin-bottom:0}
 }
 
-@media(max-width:520px){
+@media screen and (max-width:520px){
   .workspace-topbar{align-items:center}
   .topbar-status{max-width:30%}
   .connected-shell .tag{max-width:94px}
@@ -188,13 +188,13 @@ body{background:#f6f7f9}
 .job-card{grid-column:1/-1}.job-card .field{max-width:650px}
 .note-view-toolbar button{flex:1 1 auto}
 .connected-main #note-form[hidden],.connected-main #notePreview[hidden]{display:none!important}
-@media(max-width:1180px){.gpt-with-picker{grid-template-columns:1fr}.gpt-with-picker .prompt-card{grid-column:auto}}
-@media(max-width:860px){
+@media screen and (max-width:1180px){.gpt-with-picker{grid-template-columns:1fr}.gpt-with-picker .prompt-card{grid-column:auto}}
+@media screen and (max-width:860px){
  .mobile-nav{grid-template-columns:repeat(6,minmax(0,1fr))}
  .mobile-nav-item small{font-size:.56rem}
  .global-course{width:min(270px,49vw)}
 }
-@media(max-width:520px){.global-course{width:min(195px,50vw);height:34px;font-size:.73rem}.mobile-nav-item{padding:6px 1px}.mobile-nav-item>span{font-size:1rem}.mobile-nav-item small{font-size:.52rem}.note-preview{padding:13px}}
+@media screen and (max-width:520px){.global-course{width:min(195px,50vw);height:34px;font-size:.73rem}.mobile-nav-item{padding:6px 1px}.mobile-nav-item>span{font-size:1rem}.mobile-nav-item small{font-size:.52rem}.note-preview{padding:13px}}
 @media print{.workspace-sidebar,.workspace-topbar,.mobile-nav,.note-view-toolbar,.note-list-card,.account-footer,.global-messages,.panel-form,.workspace-page:not([data-page-panel="notes"]){display:none!important}.workspace-main.connected-main{padding:0}.note-preview{overflow:visible;max-height:none;border:0}}
 
 /* Course-owned SolvePad and CASIO project controls. */
@@ -203,7 +203,7 @@ body{background:#f6f7f9}
 .tool-sync-bar button{flex:0 0 auto;min-height:43px}
 #casioForm{margin:0}
 #casioForm textarea{min-height:100px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre;overflow-x:auto}
-@media(max-width:700px){.tool-sync-bar{gap:8px;padding:11px}.tool-sync-bar .field{min-width:100%}.tool-sync-bar button{flex:1 1 40%}}
+@media screen and (max-width:700px){.tool-sync-bar{gap:8px;padding:11px}.tool-sync-bar .field{min-width:100%}.tool-sync-bar button{flex:1 1 40%}}
 
 .material-group{display:block!important;padding:12px!important;border:1px solid #e7e9ed;border-radius:12px}
 .material-group h3{font-size:1rem;margin:0 0 10px}
@@ -234,3 +234,100 @@ body{background:#f6f7f9}
 
 .solve-actions button[aria-pressed="true"]{background:#fff0f1;border-color:#df414a;color:#b92e38}
 .solve-choices>div{display:flex;gap:8px;padding:8px 0}
+
+/* Workspace navigation: the old generic nav span width was also shrinking labels. */
+.workspace-nav{display:grid;overflow:visible}
+.workspace-nav-item>span:not(.nav-icon){width:auto;flex:1;min-width:0;display:block;white-space:nowrap;text-align:left;writing-mode:horizontal-tb}
+.workspace-nav-item>.nav-icon{display:block;flex:0 0 20px;width:20px}
+.workspace-sidebar{position:relative;height:auto;min-height:100dvh;align-self:stretch;padding:0;display:block}
+.workspace-sidebar-inner{position:sticky;top:0;height:100dvh;display:flex;flex-direction:column;padding:25px 16px 100px;overflow-y:auto}
+.layout-toggle{flex:0 0 auto;white-space:nowrap!important}
+.workspace-shell.sidebar-collapsed{grid-template-columns:minmax(0,1fr)}
+.notes-layout.list-collapsed,.solve-layout.list-collapsed{grid-template-columns:minmax(0,1fr)}
+.solve-question-panel,.solve-writing-panel{min-width:0}
+.solve-reveal>button:first-child{float:right;margin-left:8px}
+
+@media screen and (min-width:701px){
+ .workspace-shell{display:grid;grid-template-columns:190px minmax(0,1fr)}
+ .workspace-sidebar{display:block}
+ .workspace-sidebar-inner{padding:20px 10px 95px}
+ .workspace-brand{padding:0 6px 25px;gap:8px}
+ .workspace-brand strong{font-size:1rem}.workspace-brand small{font-size:.5rem}
+ .workspace-nav-item{padding:11px 10px;gap:9px}
+ .mobile-nav{display:none}.mobile-brand{display:none}
+ .account-footer{position:fixed;left:20px;bottom:20px;width:150px;padding:0;text-align:left}
+ .workspace-shell.sidebar-collapsed .account-footer{display:none}
+ .workspace-topbar{padding:10px 16px;gap:12px;min-height:76px}
+ .topbar-status{max-width:26%}.global-course{width:min(260px,30vw)}
+ body:is([data-workspace-page="notes"],[data-workspace-page="solvepad"]){height:100dvh;overflow:hidden}
+ body:is([data-workspace-page="notes"],[data-workspace-page="solvepad"]) .workspace-shell{height:100dvh;min-height:0}
+ body:is([data-workspace-page="notes"],[data-workspace-page="solvepad"]) .workspace-frame{height:100%;min-height:0;display:flex;flex-direction:column}
+ body:is([data-workspace-page="notes"],[data-workspace-page="solvepad"]) .workspace-topbar{position:relative;flex:0 0 auto}
+ body:is([data-workspace-page="notes"],[data-workspace-page="solvepad"]) .workspace-main{flex:1;min-height:0;max-width:none;padding:12px 16px;display:flex;flex-direction:column;overflow:hidden}
+ body:is([data-workspace-page="notes"],[data-workspace-page="solvepad"]) .global-messages{flex:0 0 auto;max-height:80px;overflow:auto;margin-bottom:8px}
+ .global-messages:not(:has(>:not([hidden]))){display:none}
+ body:is([data-workspace-page="notes"],[data-workspace-page="solvepad"]) .workspace-page:not([hidden]){flex:1;min-height:0;display:flex;flex-direction:column;animation:none}
+ body:is([data-workspace-page="notes"],[data-workspace-page="solvepad"]) .compact-page-head{flex:0 0 auto;flex-direction:row;align-items:center;margin:0 0 8px;gap:10px}
+ body:is([data-workspace-page="notes"],[data-workspace-page="solvepad"]) .compact-page-head .eyebrow,
+ body:is([data-workspace-page="notes"],[data-workspace-page="solvepad"]) .compact-page-head .sub{display:none}
+ body:is([data-workspace-page="notes"],[data-workspace-page="solvepad"]) .compact-page-head h1{font-size:1.2rem}
+ body[data-workspace-page="notes"] .notes-layout{flex:1;min-height:0;grid-template-columns:minmax(170px,.32fr) minmax(0,1fr);gap:12px}
+ body[data-workspace-page="notes"] .notes-layout.list-collapsed{grid-template-columns:minmax(0,1fr)}
+ body[data-workspace-page="notes"] .note-list-card{height:100%;min-height:0;overflow:auto;padding:14px}
+ body[data-workspace-page="notes"] .note-editor-card{height:100%;min-height:0;display:flex;flex-direction:column;overflow:hidden;padding:14px}
+ body[data-workspace-page="notes"] .note-editor-card>.card-heading{display:none}
+ body[data-workspace-page="notes"] .note-view-toolbar{flex:0 0 auto;margin:0 0 8px;gap:5px}
+ body[data-workspace-page="notes"] .note-view-toolbar button{flex:0 0 auto;padding:7px 9px}
+ body[data-workspace-page="notes"] .note-history{flex:0 0 auto;gap:6px;margin:0 0 8px}
+ body[data-workspace-page="notes"] .note-history .field{flex:1 1 130px}
+ body[data-workspace-page="notes"] .note-history button{min-height:34px;padding:7px 9px}
+ body[data-workspace-page="notes"] .note-preview{flex:1;min-height:0;max-height:none;overflow:auto;padding:16px;overscroll-behavior:contain}
+ body[data-workspace-page="notes"] #note-form{flex:1;min-height:0;display:flex;flex-direction:column;margin:0;padding-top:8px;overflow:hidden}
+ body[data-workspace-page="notes"] #note-form>.field{flex:0 0 auto;margin-bottom:8px}
+ body[data-workspace-page="notes"] #note-form>.field:has(textarea){flex:1;min-height:0}
+ body[data-workspace-page="notes"] #noteBody{flex:1;min-height:0;height:100%;resize:none}
+ body[data-workspace-page="notes"] #noteSave{flex:0 0 auto;min-height:36px;padding:8px}
+ body[data-workspace-page="solvepad"] .tool-sync-bar{flex:0 0 auto;margin:0 0 8px;padding:8px 10px;gap:8px}
+ body[data-workspace-page="solvepad"] .tool-sync-bar .field{min-width:100px;flex:1;margin:0}
+ body[data-workspace-page="solvepad"] .tool-sync-bar button{min-height:34px;padding:8px}
+ body[data-workspace-page="solvepad"] .solve-layout{flex:1;min-height:0;grid-template-columns:170px minmax(0,1fr);align-items:stretch;gap:10px}
+ body[data-workspace-page="solvepad"] .solve-layout.list-collapsed{grid-template-columns:minmax(0,1fr)}
+ body[data-workspace-page="solvepad"] .solve-index{position:static;height:100%;min-height:0;max-height:none;overflow:auto;padding:12px}
+ body[data-workspace-page="solvepad"] .solve-index .field{display:flex;width:auto;margin:0 0 10px}
+ body[data-workspace-page="solvepad"] .solve-mobile-picker{display:flex}
+ body[data-workspace-page="solvepad"] .solve-question-list{display:grid;max-height:none}
+ body[data-workspace-page="solvepad"] .solve-sheet{height:100%;min-height:0;display:flex;flex-direction:column;padding:12px;overflow:hidden}
+ body[data-workspace-page="solvepad"] .solve-heading{flex:0 0 auto;gap:8px;padding-bottom:8px}
+ body[data-workspace-page="solvepad"] .solve-heading>div{flex:1;min-width:0}
+ body[data-workspace-page="solvepad"] .solve-heading h2{font-size:1rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ body[data-workspace-page="solvepad"] .solve-heading>span{max-width:125px;font-size:.65rem}
+ body[data-workspace-page="solvepad"] .solve-content{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:12px;padding-top:8px}
+ body[data-workspace-page="solvepad"] .question-collapsed .solve-content{grid-template-columns:minmax(0,1fr)}
+ body[data-workspace-page="solvepad"] .solve-question-panel{min-height:0;overflow:auto;overscroll-behavior:contain;padding-right:6px}
+ body[data-workspace-page="solvepad"] .solve-writing-panel{min-height:0;display:flex;flex-direction:column}
+ body[data-workspace-page="solvepad"] .solve-prompt{padding:0;font-size:.92rem}
+ body[data-workspace-page="solvepad"] .solve-actions{gap:5px;margin:8px 0}
+ body[data-workspace-page="solvepad"] .solve-actions button{min-height:32px;padding:7px 8px}
+ body[data-workspace-page="solvepad"] .solve-paper-head{flex:0 0 auto;margin:0}
+ body[data-workspace-page="solvepad"] .solve-tools{flex:0 0 auto;margin:6px 0;gap:5px}
+ body[data-workspace-page="solvepad"] .solve-tools button{min-height:32px;padding:6px 8px}
+ body[data-workspace-page="solvepad"] .solve-ink{flex:1;min-height:0;height:0;width:100%}
+ body[data-workspace-page="solvepad"] .solve-page-actions{flex:0 0 auto;gap:5px;margin:6px 0}
+ body[data-workspace-page="solvepad"] .solve-page-actions button{padding:6px 8px}
+ body[data-workspace-page="solvepad"] .solve-nav{flex:0 0 auto;padding-top:7px}
+ body[data-workspace-page="solvepad"] .solve-nav button{padding:8px 12px}
+}
+@media screen and (max-width:700px){#toggleWorkspace{display:none}.solve-content{display:block}.workspace-sidebar{display:none}.workspace-shell{display:block}}
+
+/* Print has one page geometry regardless of screen viewport or collapsed panels. */
+@media print{
+ :root{font-size:11pt!important}
+ html,body{height:auto!important;overflow:visible!important;min-width:0!important}
+ .workspace-frame,.workspace-shell,.workspace-main,.notes-layout,.note-editor-card{display:block!important;width:auto!important;max-width:none!important;height:auto!important;min-height:0!important;overflow:visible!important;position:static!important;flex:none!important;grid-template-columns:none!important}
+ .layout-toggle{display:none!important}
+ #notePreview{box-sizing:border-box;width:178mm!important;max-width:100%!important;min-height:0!important;font-size:11pt!important;line-height:1.65!important;letter-spacing:0!important;padding:0!important;margin:0!important;border:0!important;border-radius:0!important;overflow:visible!important;color:#000!important;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+ #notePreview .katex{font-size:1.1em!important}
+ #notePreview mark{background:#fff1a6!important;color:#000!important}
+ #notePreview strong{font-weight:700!important}#notePreview em{font-style:italic!important}
+}
+@media screen and (min-width:701px){body:has(.workspace-shell.sidebar-collapsed) .account-footer{display:none}}

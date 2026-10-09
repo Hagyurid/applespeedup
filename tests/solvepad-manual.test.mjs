@@ -25,6 +25,10 @@ test('manual results save, reset, and filter without answer input or grading',as
   const pad=createSolvePad({call:async(path,payload)=>{if(payload){writes.push(payload);if(releaseSave)await releaseSave;return {saved:true}}if(failPack)throw Error('load failed');return []},json:x=>structuredClone(x),notify(){},onError:e=>{throw Error(e)}});
   pad.setWritable(true);
   await pad.load('pack',{pack:{questions:[{id:'a',promptMd:'첫 문제'},{id:'b',promptMd:'둘 문제'}]}});
+  node('solveHint').onclick();assert.equal(node('solveReveal').hidden,false);assert.equal(node('solveHint').attrs['aria-expanded'],'true');
+  node('solveHint').onclick();assert.equal(node('solveReveal').hidden,true);
+  node('solveHint').onclick();node('solveSolution').onclick();assert.equal(node('solveHint').attrs['aria-expanded'],'false');assert.equal(node('solveSolution').attrs['aria-expanded'],'true');
+  node('solveReveal').childNodes[0].onclick();assert.equal(node('solveReveal').hidden,true);assert.equal(node('solveSolution').attrs['aria-expanded'],'false');assert.equal(writes.length,0);
   node('solveWrong').onclick();await pad.flush();assert.equal(writes.at(-1).result,'wrong');
   node('solveFilter').value='wrong';node('solveFilter').onchange();assert.equal(node('solveQuestionSelect').options.length,1);
   assert.equal(node('solveNext').disabled,true);
@@ -43,6 +47,7 @@ test('manual results save, reset, and filter without answer input or grading',as
   node('solveWrong').onclick();assert.equal(node('solveCorrect').attrs['aria-pressed'],'true');
   release();releaseSave=null;await new Promise(resolve=>setImmediate(resolve));
   assert.equal(node('solveQuestionTitle').textContent,'문제 2');assert.equal(writes.at(-1).result,'correct');
+  assert.equal(node('solveReveal').hidden,true);
   assert.equal(writes.at(-1).expected_revision,4);
   await pad.reset();
  }finally{Object.assign(globalThis,savedGlobals)}

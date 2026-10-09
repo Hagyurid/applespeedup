@@ -9,7 +9,8 @@
 </head>
 <body>
   <div class="connected-shell workspace-shell">
-    <aside class="workspace-sidebar" aria-label="에쁠가속기 메뉴">
+    <aside id="workspaceSidebar" class="workspace-sidebar" aria-label="에쁠가속기 메뉴">
+     <div class="workspace-sidebar-inner">
       <div class="workspace-brand">
         <div class="brand-mark" aria-hidden="true">A<span>+</span></div>
         <div><strong>에쁠가속기</strong><small>A+ ACCELERATOR</small></div>
@@ -27,10 +28,12 @@
         <span class="status-dot" aria-hidden="true"></span>
         <div><span id="accountName" class="account-name"></span><small id="sidebarStatus">비공개 작업 공간</small></div>
       </div>
+     </div>
     </aside>
 
     <div class="workspace-frame">
       <header class="workspace-topbar">
+        <button id="toggleWorkspace" class="ghost small layout-toggle" type="button" aria-expanded="true" aria-controls="workspaceSidebar">메뉴 접기</button>
         <div class="mobile-brand" aria-hidden="true"><div class="brand-mark">A<span>+</span></div></div>
         <div class="lecture-summary">
           <label for="globalCourse">현재 과목</label>
@@ -147,9 +150,10 @@
         <section id="page-notes" class="workspace-page" data-page-panel="notes" aria-labelledby="notes-title" hidden>
           <div class="page-head compact-page-head">
             <div><div class="eyebrow">STUDY NOTES</div><h1 id="notes-title">정리본</h1><p class="sub">저장된 정리본을 선택하고 충돌 없이 수정·저장하세요.</p></div>
+            <button id="toggleNoteList" class="ghost small layout-toggle" type="button" aria-expanded="true" aria-controls="noteListPanel">목록 접기</button>
           </div>
           <div class="page-grid notes-layout">
-            <section class="card workspace-card note-list-card">
+            <section id="noteListPanel" class="card workspace-card note-list-card">
               <div class="card-heading"><div><span class="step-number">01</span><h2>정리본 목록</h2></div><button type="button" id="noteRestoreDraft" class="ghost small" hidden>기기 초안 복구</button><button type="button" id="noteNew" class="ghost small">새 정리본</button></div>
               <ul id="noteList" class="compact-list"></ul>
             </section>
@@ -167,7 +171,7 @@
           </div>
         </section>
         <section id="page-solvepad" class="workspace-page" data-page-panel="solvepad" aria-labelledby="solvepad-title" hidden>
-          <div class="page-head compact-page-head"><div><div class="eyebrow">PRACTICE</div><h1 id="solvepad-title">SolvePad 문제풀이</h1><p class="sub">현재 과목의 문제를 풀고 필기·답안·오답을 저장하세요.</p></div></div>
+          <div class="page-head compact-page-head"><div><div class="eyebrow">PRACTICE</div><h1 id="solvepad-title">SolvePad 문제풀이</h1><p class="sub">정·오답을 기록하고 문제 이동 시 필기를 저장하세요.</p></div><button id="toggleProblemList" class="ghost small layout-toggle" type="button" aria-expanded="true" aria-controls="solveIndex">목록 접기</button></div>
           <div class="tool-sync-bar">
             <label class="field">현재 과목의 문제팩<select id="packSelect" aria-label="문제팩 선택"></select></label>
             <button class="ghost small" id="refreshPacks" type="button">목록 새로고침</button>
@@ -175,7 +179,7 @@
           </div>
           <div id="solveEmpty" class="card workspace-card">문제팩을 선택하면 여기에 풀이 공간이 열립니다.</div>
           <div id="solveWorkspace" class="solve-layout" hidden>
-            <aside class="card solve-index" aria-label="문제 목록">
+            <aside id="solveIndex" class="card solve-index" aria-label="문제 목록">
               <div class="solve-index-head"><strong id="solvePackTitle">문제팩</strong><span id="solveCount"></span></div>
               <label class="field">문제 보기<select id="solveFilter"><option value="all">전체</option><option value="bookmarked">북마크</option><option value="wrong">오답만 보기</option></select></label>
               <label class="field solve-mobile-picker">문제 선택<select id="solveQuestionSelect" aria-label="풀 문제 선택"></select></label>
@@ -183,17 +187,23 @@
             </aside>
             <div id="solveFilteredEmpty" class="card" hidden>조건에 맞는 문제가 없습니다. 전체 보기로 바꾸거나 목록에서 문제를 선택하세요.</div>
             <section id="solveSheet" class="card solve-sheet" aria-label="현재 문제">
-              <div class="solve-heading"><div><span id="solveNumber" class="eyebrow"></span><h2 id="solveQuestionTitle"></h2></div><span id="solveSaveStatus" role="status">저장 대기</span></div>
+              <div class="solve-heading"><div><span id="solveNumber" class="eyebrow"></span><h2 id="solveQuestionTitle"></h2></div><span id="solveSaveStatus" role="status">저장 대기</span><button id="toggleProblemView" class="ghost small layout-toggle" type="button" aria-expanded="true" aria-controls="solveQuestionPanel">문제 접기</button></div>
+              <div class="solve-content">
+               <div id="solveQuestionPanel" class="solve-question-panel">
               <div id="solvePrompt" class="solve-prompt"></div>
               <div id="solveChoices" class="solve-choices"></div>
               <div class="solve-actions"><button id="solveCorrect" class="ghost small" type="button" aria-pressed="false">정답 기록</button><button id="solveWrong" class="ghost small" type="button" aria-pressed="false">오답 기록</button><button id="solveReload" class="ghost small" type="button" hidden>최신 풀이 불러오기</button><button id="solveRestoreDraft" class="ghost small" type="button" hidden>기기 초안 복구</button><button id="solveUnmarked" class="ghost small" type="button" aria-pressed="true">기록 해제</button><button id="solveHint" class="ghost small" type="button">힌트</button><button id="solveSolution" class="ghost small" type="button">해설 보기</button><button id="solveBookmark" class="ghost small" type="button" aria-pressed="false">북마크</button></div>
               <div id="solveFeedback" class="solve-feedback" role="status" hidden></div>
               <div id="solveReveal" class="solve-reveal" hidden></div>
+               </div>
+               <div class="solve-writing-panel">
               <div class="solve-paper-head"><strong>풀이 필기</strong><span id="solvePageLabel"></span></div>
               <div class="solve-tools" role="toolbar" aria-label="필기 도구"><button id="solvePen" class="ghost small active" type="button" aria-pressed="true">펜</button><button id="solveErase" class="ghost small" type="button" aria-pressed="false">지우개</button><label>굵기 <input id="solveWidth" type="range" min="2" max="12" value="4"></label><button id="solveUndo" class="ghost small" type="button">되돌리기</button><button id="solveClear" class="ghost small" type="button">이 페이지 지우기</button></div>
               <canvas id="solveInk" class="solve-ink" aria-label="손가락 또는 펜으로 풀이를 적는 영역"></canvas>
               <div class="solve-page-actions"><button id="solvePrevPage" class="ghost small" type="button">이전 필기장</button><button id="solveNextPage" class="ghost small" type="button">다음 필기장</button><button id="solveAddPage" class="ghost small" type="button">필기장 추가</button></div>
               <div class="solve-nav"><button id="solvePrev" class="ghost" type="button">이전 문제</button><button id="solveNext" class="primary" type="button">다음 문제</button></div>
+               </div>
+              </div>
             </section>
           </div>
         </section>
