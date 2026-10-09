@@ -34,6 +34,65 @@ test('exam metadata is year-only and user title cannot be replaced by upload fil
  await assert.rejects(()=>repo.upload('alice',{course_id:'chem',title:'기말',source_type:'past_exam',weeks:[1],exam_year:2024,filename:'b.pdf',buffer:file}),/BAD_REQUEST/);
  await assert.rejects(()=>repo.startJob('alice',{course_id:'chem',mode:'detailed_note',source_ids:[out.id]}),/REVIEW_INCOMPLETE/);
 });
+test('Korean, Word, PDF, text and images accept their signatures and remain scoped',async()=>{
+ const {repo}=setup();
+ const cases=[
+  ['sample.hwp',[208,207,17,224,161,177,26,225],'application/x-hwp'],
+  ['sample.doc',[208,207,17,224,161,177,26,225],'application/msword'],
+  ['sample.hwpx',[80,75,3,4],'application/vnd.hancom.hwpx'],
+  ['sample.docx',[80,75,3,4],'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+  ['sample.pdf',[37,80,68,70,45],'application/pdf'],
+  ['sample.png',[137,80,78,71],'image/png'],
+  ['sample.jpg',[255,216,255],'image/jpeg'],
+  ['sample.txt',[84,69,83,84],'text/plain']
+ ];
+ for(const [index,[filename,signature,mime]] of cases.entries()){
+  const bytes=new Uint8Array(80);bytes.set(signature);bytes[79]=index+1;
+  const saved=await repo.upload('alice',{course_id:'chem',title:filename,source_type:'lecture_slides',filename,buffer:bytes});
+  const row=(await repo.listMaterials('alice',{course_id:'chem'})).find(x=>x.id===saved.id);
+  assert.equal(row.mime_type,mime);
+  await assert.rejects(()=>repo.deleteMaterial('bob',{id:saved.id}),/NOT_FOUND/);
+ }
+ await assert.rejects(()=>repo.upload('alice',{course_id:'chem',title:'가짜',source_type:'other',filename:'invalid.hwp',buffer:new Uint8Array(80)}),/BAD_FILE/);
+});
+test('deleting a material removes its source and stored file only for a writer',async()=>{
+ const {repo,bucket}=setup();
+ const bytes=new Uint8Array(80);bytes.set([37,80,68,70,45]);
+ const saved=await repo.upload('alice',{course_id:'chem',title:'삭제 자료',source_type:'lecture_slides',filename:'page.pdf',buffer:bytes});
+ await repo.setPdfPageCount('alice',{material_id:saved.id,page_count:1});
+ const image=new Uint8Array(80);image.set([255,216,255]);
+ await repo.uploadPageImage('alice',{material_id:saved.id,page_num:1,mime_type:'image/jpeg',bytes:image});
+ assert.equal(bucket.map.size,2);
+ await repo.deleteMaterial('alice',{id:saved.id});
+ assert.equal((await repo.listMaterials('alice',{course_id:'chem'})).length,0);
+ assert.equal(bucket.map.size,0);
+});
+test('only the owner can delete a course and dependent jobs and files are removed',async()=>{
+ const {repo,db,bucket}=setup();
+ const transcript=await repo.registerText('alice',{course_id:'chem',title:'전사본',content:'시험 원문'});
+ const bytes=new Uint8Array(80);bytes.set([37,80,68,70,45]);
+ await repo.upload('alice',{course_id:'chem',title:'슬라이드',source_type:'lecture_slides',filename:'lecture.pdf',buffer:bytes});
+ await repo.saveReview('alice',{material_id:transcript.id,page_num:1,raw_text:'시험 원문',corrected_text:'교정'});
+ await repo.finalizeReview('alice',{material_id:transcript.id,page_count:1});
+ const job=await repo.startJob('alice',{course_id:'chem',mode:'detailed_note',source_ids:[transcript.id]});
+ await repo.saveOutline('alice',{job_id:job.id,sections:[{title:'첫 절'}]});
+ await assert.rejects(()=>repo.deleteCourse('bob',{id:'chem'}),/NOT_FOUND/);
+ assert.equal(bucket.map.size,1);
+ await repo.deleteCourse('alice',{id:'chem'});
+ assert.equal(bucket.map.size,0);
+ assert.equal(db.db.prepare('SELECT count(*) AS n FROM course_materials').get().n,0);
+ assert.equal(db.db.prepare('SELECT count(*) AS n FROM course_generation_jobs').get().n,0);
+ assert.equal((await repo.listMaterials('bob',{course_id:'math'})).length,0);
+});
+test('course deletion clears legacy offering references before cascading',async()=>{
+ const {repo,db,bucket}=setup();
+ db.db.exec("INSERT INTO offerings(id,course_id,year,term) VALUES('off','chem',2026,'2'); INSERT INTO problem_packs(id,offering_id,title,body_json) VALUES('pack','off','연습','{}'); INSERT INTO private_attempts(id,user_id,pack_id,data_json) VALUES('attempt','alice','pack','{}'); INSERT INTO course_facts(id,course_id,offering_id,fact_key,fact_value) VALUES('fact','chem','off','topic','rate'); INSERT INTO source_assets(id,offering_id,source_type,title,storage_key) VALUES('old','off','transcript','원본','legacy/file'); INSERT INTO source_page_images(source_id,page_num,storage_key,mime_type) VALUES('old',1,'legacy/page','image/jpeg');");
+ await bucket.put('legacy/file',new Uint8Array([1]));await bucket.put('legacy/page',new Uint8Array([2]));
+ await repo.deleteCourse('alice',{id:'chem'});
+ assert.equal(bucket.map.size,0);
+ assert.equal(db.db.prepare('SELECT count(*) AS n FROM private_attempts').get().n,0);
+ assert.equal(db.db.prepare('SELECT count(*) AS n FROM offerings').get().n,0);
+});
 test('outline is required and every section autosaves the same study note',async()=>{
  const {repo}=setup();
  const id=(await repo.registerText('alice',{course_id:'chem',title:'자료',content:'정상 텍스트'})).id;

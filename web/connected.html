@@ -55,6 +55,7 @@
             <section class="card workspace-card">
               <div class="card-heading"><div><span class="step-number">01</span><h2>과목 정보 등록</h2></div></div>
               <label class="field">과목 선택<select id="course"></select></label>
+              <button id="deleteCourse" type="button" class="ghost small danger-action">선택한 과목 삭제</button>
               <select id="offering" hidden aria-hidden="true" tabindex="-1"></select>
               <form id="course-form" class="panel-form">
                 <label class="field">새 과목<input id="courseName" placeholder="예: 촉매반응공학" required maxlength="150"></label>
@@ -72,7 +73,7 @@
           </div>
           <div class="page-grid source-layout">
             <section class="card workspace-card">
-              <div class="card-heading"><div><span class="step-number">01</span><h2>자료 등록</h2></div><p>TXT·MD·PDF</p></div>
+              <div class="card-heading"><div><span class="step-number">01</span><h2>자료 등록</h2></div><p>한글·워드·PDF·텍스트·이미지</p></div>
               <form id="source-form" class="panel-form">
                 <label class="field">자료 유형<select id="sourceType"><option value="lecture_slides">강의자료</option><option value="transcript">전사본</option><option value="textbook">교재·참고자료</option><option value="past_exam">기출·시험자료</option><option value="other">기타</option></select></label>
                 <label class="field">등록할 자료 제목 (직접 입력)<input id="sourceTitle" required maxlength="200" autocomplete="off" placeholder="예: 촉매반응공학 기말고사"></label>
@@ -85,11 +86,11 @@
                 </div>
                 <label class="field" id="examYearField" hidden>기출 연도 (선택)<input id="examYear" type="number" min="1900" max="2100" placeholder="예: 2024"></label>
                 <label class="field">전사본 입력<textarea id="transcript" rows="6" placeholder="녹음 파일이 아닌 전사된 텍스트를 붙여넣으세요."></textarea></label>
-                <label class="field file-field">원본 파일 (TXT·MD·PDF·DOCX·PPTX·PNG·JPG)<input id="sourceFile" type="file" accept=".txt,.md,.pdf,.docx,.pptx,.png,.jpg,.jpeg"></label>
+                <label class="field file-field">원본 파일 (HWP·HWPX·DOC·DOCX·PDF·TXT·MD·PNG·JPG·PPTX, 최대 8 MiB)<input id="sourceFile" type="file" accept=".hwp,.hwpx,.doc,.docx,.pdf,.txt,.md,.png,.jpg,.jpeg,.pptx"></label>
                 <label class="field">출처 설명 (선택)<input id="provenance" maxlength="400" placeholder="예: 강의 PPT, 교재 스캔본"></label>
                 <button class="primary action-button" type="submit">자료 저장</button>
               </form>
-              <p class="hint">TXT·MD 전사본은 원문을 저장하고 GPT 교정을 기다립니다. PDF는 업로드 후 이 기기에서 페이지를 준비합니다. 페이지 준비와 ChatGPT 교정이 끝나야 제작 자료로 선택할 수 있습니다.</p>
+              <p class="hint">TXT·MD는 원문을 저장합니다. PDF·이미지는 페이지를 준비한 뒤 ChatGPT에서 OCR 교정합니다. 한글·워드·PPTX는 원본 저장·다운로드가 가능하며, 내용 검색과 GPT 교정에는 PDF 또는 TXT로 변환해 별도 등록해야 합니다.</p>
               <p id="pdfProgress" class="hint" role="status" hidden></p>
               <button id="cancelPdf" type="button" class="ghost small" hidden>페이지 준비 일시정지</button>
             </section>

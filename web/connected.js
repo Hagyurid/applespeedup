@@ -147,6 +147,16 @@ function renderSources(){
       };
       li.append(button);
     }
+    const remove=document.createElement('button');remove.type='button';remove.className='ghost small danger-action';remove.textContent='자료 삭제';
+    remove.disabled=!state.writesEnabled;
+    remove.onclick=()=>{
+      const current=course();if(!current||!window.confirm(`「${src.title}」 자료를 삭제할까요? 원본 파일과 교정 내용도 함께 삭제됩니다.`))return;
+      run(async()=>{
+        if(current.id!==course()?.id)throw Error('과목이 바뀌었습니다. 다시 확인하세요.');
+        await call('/api/v2/material/'+encodeURIComponent(src.id),{method:'DELETE'});
+        state.selectedIds.delete(src.id);await refreshOfferingData();
+      },'자료를 삭제했습니다.');
+    };li.append(remove);
     node.append(li);
   }
 }
@@ -324,12 +334,22 @@ async function run(fn,success='저장된 자료를 확인했습니다.'){
   finally{state.busy=false;controls.forEach(([el,disabled])=>{if(el.isConnected)el.disabled=disabled;});applyWriteLock();}
 }
 function applyWriteLock(){
- document.querySelectorAll('#course-form button,#source-form button,#note-form button,#noteNew,#packUpload,#casioForm button').forEach(el=>el.disabled=!state.writesEnabled);
+ document.querySelectorAll('#course-form button,#deleteCourse,#source-form button,#note-form button,#noteNew,#packUpload,#casioForm button').forEach(el=>el.disabled=!state.writesEnabled);
  pad.setWritable(state.writesEnabled);
 }
 $('globalCourse').onchange=()=>run(async()=>{const target=$('globalCourse').value;$('course').value=target;state.selectedIds.clear();await refreshOfferings();});$('course').onchange=()=>run(async()=>{$('globalCourse').value=$('course').value;state.selectedIds.clear();await refreshOfferings();});$('offering').onchange=()=>run(refreshOfferingData);
 $('mode').onchange=refreshPrompt;$('scope').oninput=refreshPrompt;
 $('course-form').onsubmit=e=>{e.preventDefault();run(async()=>{const r=await call('/api/courses',json({name:$('courseName').value,characteristics:$('characteristics').value}));$('course-form').reset();await refreshCourses(r.id);});};
+$('deleteCourse').onclick=()=>{
+ const current=course();if(!current)return fail('삭제할 과목을 선택하세요.');
+ const typed=window.prompt(`「${current.name}」 과목과 자료·정리본·작업을 모두 삭제합니다. 확인하려면 과목 이름을 그대로 입력하세요.`);
+ if(typed!==current.name)return;
+ run(async()=>{
+   if(current.id!==course()?.id)throw Error('선택 과목이 바뀌었습니다. 다시 확인하세요.');
+   await call('/api/v2/course/'+encodeURIComponent(current.id),{method:'DELETE'});
+   state.drafts.delete(current.id);state.activeOffering=null;await refreshCourses();
+ },'과목과 연결된 자료를 삭제했습니다.');
+};
 $('source-form').onsubmit=e=>{e.preventDefault();run(async()=>{
   const o=offering();if(!o)throw Error('과목을 먼저 등록하세요.');
   const file=$('sourceFile').files[0],name=$('sourceTitle').value.trim(),provenance=$('provenance').value,type=$('sourceType').value;

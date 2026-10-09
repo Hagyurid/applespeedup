@@ -5,7 +5,10 @@ const fail=(code)=>{const e=new Error(code);e.code=code;throw e;};
 const uid=()=>crypto.randomUUID();
 const clean=(value,max)=>{if(typeof value!=='string'||!value.trim()||value.length>max)fail('BAD_REQUEST');return value.trim();};
 const TYPES=new Set(['lecture_slides','transcript','textbook','past_exam','other']);
-const FILE_TYPES={'.txt':'text/plain','.md':'text/markdown','.pdf':'application/pdf','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document','.pptx':'application/vnd.openxmlformats-officedocument.presentationml.presentation'};
+const FILE_TYPES={'.txt':'text/plain','.md':'text/markdown','.pdf':'application/pdf','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document','.doc':'application/msword','.hwp':'application/x-hwp','.hwpx':'application/vnd.hancom.hwpx','.pptx':'application/vnd.openxmlformats-officedocument.presentationml.presentation'};
+const OLE_HEADER=[208,207,17,224,161,177,26,225];
+const isZip=data=>data[0]===80&&data[1]===75&&data[2]===3&&data[3]===4;
+const isOle=data=>OLE_HEADER.every((value,index)=>data[index]===value);
 function metadata(type,weeks=[],examYear=null){
  if(!TYPES.has(type)||!Array.isArray(weeks)||weeks.length>30||weeks.some(x=>!Number.isInteger(x)||x<1||x>30))fail('BAD_REQUEST');
  if(type==='past_exam'){
@@ -61,7 +64,8 @@ export function createCourseLibrary(db,bucket){
    if(extension==='.pdf'&&new TextDecoder().decode(data.subarray(0,5))!=='%PDF-')fail('BAD_FILE');
    if(['.png'].includes(extension)&&!(data[0]===137&&data[1]===80&&data[2]===78&&data[3]===71))fail('BAD_FILE');
    if(['.jpg','.jpeg'].includes(extension)&&!(data[0]===255&&data[1]===216&&data[2]===255))fail('BAD_FILE');
-   if(['.docx','.pptx'].includes(extension)&&!(data[0]===80&&data[1]===75))fail('BAD_FILE');
+   if(['.docx','.pptx','.hwpx'].includes(extension)&&!isZip(data))fail('BAD_FILE');
+   if(['.doc','.hwp'].includes(extension)&&!isOle(data))fail('BAD_FILE');
    if(!bucket?.put)fail('STORAGE_NOT_CONFIGURED');
    const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',data))].map(x=>x.toString(16).padStart(2,'0')).join('');
    const duplicate=await one("SELECT id FROM course_materials WHERE course_id=? AND source_type=? AND sha256=?",course_id,source_type,hash);
@@ -85,6 +89,36 @@ export function createCourseLibrary(db,bucket){
    await q("INSERT INTO course_materials(id,course_id,title,source_type,weeks_json,exam_year,provenance,original_text,mime_type,review_status,page_count) VALUES(?,?,?,?,?,?,?,?,'text/plain','pending_review',1)",
      id,course_id,clean(title,200),source_type,JSON.stringify(meta.weeks),meta.examYear,provenance.trim(),value).run();
    return {id,review_status:'pending_review'};
+  },
+  async deleteMaterial(user,{id}={}){
+   const material=await source(user,id,true);
+   const images=await all('SELECT storage_key FROM course_material_page_images WHERE material_id=?',id);
+   await q('DELETE FROM course_materials WHERE id=? AND course_id=?',id,material.course_id).run();
+   const keys=[material.storage_key,...images.map(image=>image.storage_key)].filter(Boolean);
+   await Promise.allSettled(keys.map(key=>bucket?.delete(key)));
+   return {id,deleted:true};
+  },
+  async deleteCourse(user,{id}={}){
+   if(!user||!id)fail('BAD_REQUEST');
+   const owned=await one('SELECT id FROM courses WHERE id=? AND owner_user_id=?',id,user);
+   if(!owned)fail('NOT_FOUND');
+   const [materials,images,legacy,legacyImages]=await Promise.all([
+    all('SELECT storage_key FROM course_materials WHERE course_id=?',id),
+    all('SELECT p.storage_key FROM course_material_page_images p JOIN course_materials m ON m.id=p.material_id WHERE m.course_id=?',id),
+    all('SELECT s.storage_key FROM source_assets s JOIN offerings o ON o.id=s.offering_id WHERE o.course_id=?',id),
+    all('SELECT p.storage_key FROM source_page_images p JOIN source_assets s ON s.id=p.source_id JOIN offerings o ON o.id=s.offering_id WHERE o.course_id=?',id)
+   ]);
+   // These references have NO ACTION foreign keys and must be removed before their parents.
+   await db.batch([
+    q('DELETE FROM private_attempts WHERE pack_id IN (SELECT p.id FROM problem_packs p JOIN offerings o ON o.id=p.offering_id WHERE o.course_id=?)',id),
+    q('DELETE FROM ai_generation_runs WHERE course_id=?',id),
+    q('DELETE FROM course_generation_jobs WHERE course_id=?',id),
+    q('DELETE FROM course_facts WHERE course_id=?',id),
+    q('DELETE FROM courses WHERE id=? AND owner_user_id=?',id,user)
+   ]);
+   const keys=[...materials,...images,...legacy,...legacyImages].map(row=>row.storage_key).filter(Boolean);
+   await Promise.allSettled(keys.map(key=>bucket?.delete(key)));
+   return {id,deleted:true};
   },
   async setPdfPageCount(user,{material_id,page_count}={}){
    const m=await source(user,material_id,true);
@@ -340,6 +374,8 @@ export async function handleCourseRequest(request,{db,bucket,userId}){
      '/api/v2/job':['getJob',{id:url.searchParams.get('id')}]};
    if(method==='GET'&&get[p])return json(await repo[get[p][0]](userId,get[p][1]));
    if(method==='GET'&&p.startsWith('/api/v2/file/'))return repo.getFile(userId,{id:p.slice('/api/v2/file/'.length)});
+   if(method==='DELETE'&&p.startsWith('/api/v2/material/'))return json(await repo.deleteMaterial(userId,{id:p.slice('/api/v2/material/'.length)}));
+   if(method==='DELETE'&&p.startsWith('/api/v2/course/'))return json(await repo.deleteCourse(userId,{id:p.slice('/api/v2/course/'.length)}));
    if(method==='POST'&&p==='/api/v2/page-image'){
      return json(await repo.uploadPageImage(userId,{material_id:request.headers.get('x-material-id'),
        page_num:Number(request.headers.get('x-page-num')),mime_type:request.headers.get('content-type'),

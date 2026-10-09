@@ -74,6 +74,8 @@ body{background:#f6f7f9}
 .connected-main .compact-list li>span{flex:1;min-width:160px}
 .connected-main .compact-list button{flex:0 0 auto;font-size:.72rem}
 .connected-main .compact-list li:only-child:not(:has(button)){background:#fafbfc;color:#999da6;border-style:dashed}
+.connected-main .danger-action{color:#a8333c;border-color:#e8b5ba}
+.connected-main .danger-action:hover{background:#fff4f4}
 .connected-main h3{font-size:.9rem;margin:0 0 12px}
 .connected-main .hint{font-size:.76rem;color:#818692;line-height:1.65}
 .library-card{min-height:450px}
