@@ -1,3 +1,4 @@
+import {bindSourceUpload} from './source-upload.js';
 import {createDraftStore} from './local-drafts.js';
 import {DEFAULT_PRESETS} from '../domain/core.mjs';
 import {createSolvePad} from './solvepad.js';
@@ -377,23 +378,35 @@ $('deleteCourse').onclick=()=>{
    state.drafts.delete(current.id);state.activeOffering=null;await refreshCourses();
  },'과목과 연결된 자료를 삭제했습니다.');
 };
-$('source-form').onsubmit=e=>{e.preventDefault();run(async()=>{
+function sourceFeedback(message,kind='progress'){
+ const node=$('sourceSaveStatus');node.hidden=false;node.textContent=message;
+ node.className=kind==='error'?'notice error-notice':'hint';
+}
+async function registerSource(){
+ let saved=false;
+ try{
   const o=offering();if(!o)throw Error('과목을 먼저 등록하세요.');
   const file=$('sourceFile').files[0],name=file?.name||'',provenance=$('provenance').value,type=$('sourceType').value;
   const weeks=type==='past_exam'?[]:sourceWeeks();
   const exam_year=type==='past_exam'&&$('examYear').value!==''?Number($('examYear').value):null;let r;
+  if(exam_year!==null&&(!Number.isInteger(exam_year)||exam_year<1900||exam_year>2100))throw Error('기출 연도는 1900–2100 사이의 정수로 입력하세요.');
   if(file){if(file.size>8*1024*1024)throw Error('최대 8 MiB까지 등록할 수 있습니다.');
     const headers={'Content-Type':'application/octet-stream','X-Course-Id':o.id,'X-Source-Type':type,'X-Title':encodeURIComponent(name),'X-Filename':encodeURIComponent(file.name),'X-Provenance':encodeURIComponent(provenance),'X-Weeks':JSON.stringify(weeks),...(exam_year!==null?{'X-Exam-Year':String(exam_year)}:{})};
     r=await call('/api/v2/upload',{method:'POST',headers,body:file});
-  }else{if(type!=='transcript')throw Error('전사본 직접 입력 외에는 원본 파일을 선택하세요.');
+  }else{if(type!=='transcript')throw Error('원본 파일을 선택하세요. 텍스트를 직접 입력했다면 자료 유형을 전사본으로 선택해 주세요.');
+    if(!$('transcript').value.trim())throw Error('전사본 내용을 입력하거나 원본 파일을 선택하세요.');
     r=await call('/api/v2/text',json({course_id:o.id,title:name,source_type:type,content:$('transcript').value,weeks,exam_year,provenance}));}
-  $('source-form').reset();for(const el of $('weeksGrid').querySelectorAll('input'))el.checked=false;syncSourceMetadataFields();await refreshOfferingData();if(r.reused)fail('동일 파일이 있어 분류 정보만 갱신했습니다.');
+  saved=true;sourceFeedback(r.reused?'이미 등록된 자료입니다. 분류 정보를 갱신했습니다.':'원본 저장 완료 · 자료 목록을 갱신합니다.');
+  $('source-form').reset();for(const el of $('weeksGrid').querySelectorAll('input'))el.checked=false;syncSourceMetadataFields();rememberDraft();await refreshOfferingData();
   if(file&&/\.pdf$/i.test(file.name))setTimeout(()=>{void prepareStoredPdf(r.id,file).catch(e=>fail(e.message));},0);
   if(file&&/\.(png|jpe?g)$/i.test(file.name)){
     const preview=await createPagePreview(file);
     if(preview)await call('/api/v2/page-image',{method:'POST',headers:{'Content-Type':'image/jpeg','X-Material-Id':r.id,'X-Page-Num':'1'},body:preview});
   }
-});};
+  sourceFeedback(r.reused?'기존 자료의 분류 정보를 갱신했습니다.':'자료 저장 완료 · 등록 자료 목록에서 확인할 수 있습니다.');
+ }catch(e){sourceFeedback(saved?'원본은 저장됐지만 목록 갱신 또는 페이지 준비에 실패했습니다. '+e.message:e.message,'error');throw e;}
+}
+bindSourceUpload({form:$('source-form'),button:$('sourceSave'),submit:()=>run(registerSource,'자료 등록 처리를 마쳤습니다.'),feedback:sourceFeedback,canWrite:()=>state.writesEnabled,isBusy:()=>state.busy});
 $('search-form').onsubmit=e=>{e.preventDefault();run(async()=>{
   const o=offering();if(!o)throw Error('과목을 먼저 선택하세요.');
   const matches=await call(`/api/v2/search?course_id=${encodeURIComponent(o.id)}&query=${encodeURIComponent($('searchQuery').value)}`);
