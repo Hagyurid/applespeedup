@@ -1,3 +1,4 @@
+import {legacyEquationTex} from '../domain/note-math.mjs';
 import {compactNoteIntroduction} from '../domain/note-presentation.mjs';
 /** Safe study-note preview. Markdown syntax becomes DOM nodes, never raw HTML. */
 const katex=import('/vendor/katex/katex.mjs').catch(()=>null);
@@ -15,9 +16,9 @@ function inline(target,text){
       mathTasks.push(katex.then(lib=>{if(lib&&span.isConnected)lib.render(tex,span,{throwOnError:false,trust:false,displayMode:display});}));
     }else if(match[4]){const strong=el('strong');inline(strong,match[4]);target.append(strong);}
     else if(match[5])target.append(el('mark',match[5]));
-    else if(/\\(?:frac|sqrt|sum|int|mathrm|text)|^[A-Za-z]+_[A-Za-z0-9{]/.test(match[6])){
-      const span=el('span',match[6]);span.className='note-math';target.append(span);
-      mathTasks.push(katex.then(lib=>{if(lib&&span.isConnected)lib.render(match[6],span,{throwOnError:false,trust:false,displayMode:false});}));
+    else if(legacyEquationTex(match[6])){
+      const matchValue=match[6],tex=legacyEquationTex(matchValue);const span=el('span',tex);span.className='note-math';target.append(span);
+      mathTasks.push(katex.then(lib=>{if(lib&&span.isConnected){try{lib.render(tex,span,{throwOnError:true,trust:false,displayMode:false});}catch{span.replaceWith(el('code',matchValue));}}}));
     }else target.append(el('code',match[6]));
     cursor=tokens.lastIndex;
   }

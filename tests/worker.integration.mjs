@@ -94,7 +94,7 @@ try{
     assert.equal((await request('/api/v2/page-image',{method:'POST',headers:{...alice,'content-type':'image/png','x-material-id':pdf.id,'x-page-num':'1'},body:image})).status,201);
     assert.equal((await invoke('get_course_page_image',{material_id:pdf.id,page_num:1})).content[0].type,'image');
     assert.equal((await invoke('get_course_page_image',{material_id:pdf.id,page_num:1},bob)).isError,true);
-    const pack=await (await request('/api/v2/pack',{method:'POST',json:{course_id:c.id,title:'연습',pack:{schemaVersion:'solvepad.problemPack.v5',questions:[{id:'q1',promptMd:'2+2',answer:{value:'4'}}]}}})).json();
+    const pack=await (await request('/api/v2/pack',{method:'POST',json:{course_id:c.id,title:'연습',pack:{schemaVersion:'solvepad.problemPack.v5',questions:[{id:'q1',promptMd:'2+2',answer:{value:'4'},solution:'2+2=4'}]}}})).json();
     assert.ok(pack.id);
     assert.equal((await request('/api/v2/attempt',{method:'POST',json:{pack_id:pack.id,question_id:'q1',answer:'4',strokes:[[{color:'#222',width:4,points:[{x:.1,y:.2},{x:.2,y:.3}]}]],result:'correct',bookmarked:true}})).status,201);
     const attempts=await (await request('/api/v2/attempts?pack_id='+pack.id)).json();
@@ -133,6 +133,20 @@ try{
     await invoke('save_course_review_page',{material_id:transcript.id,page_num:1,raw_text:'그대로',corrected_text:'검수본'});
     const job=await invoke('start_course_generation',{course_id:c.id,mode:'detailed_note',source_ids:[doc.id,transcript.id],additional_requests:'표 포함'});
     const progress=await invoke('get_course_generation_progress',{job_id:job.id});assert.equal(progress.additional_requests,'표 포함');assert.deepEqual(progress.original_source_ids,[]);
+  });
+  await check('native exam and CASIO MCP outputs complete once without creating notes',async()=>{
+    const invoke=async(name,args)=>{const r=await request('/mcp',{method:'POST',headers:{...alice,accept:'application/json, text/event-stream'},json:{jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}}});const result=(await r.json()).result;assert.equal(result.isError,false,JSON.stringify(result));return JSON.parse(result.content[0].text);};
+    const source=await (await request('/api/v2/text',{method:'POST',json:{course_id:c.id,title:'원문',source_type:'other',content:'기체 법칙'}})).json();
+    for(const mode of ['exam_paper','calculator']){
+      const job=await invoke('start_course_generation',{course_id:c.id,mode,source_ids:[source.id]});
+      await invoke('save_course_outline',{job_id:job.id,sections:[{title:'문제 또는 코드'}]});
+      const args={course_id:c.id,job_id:job.id,title:'전용 결과'};
+      if(mode==='exam_paper')args.pack={questions:[{id:'q1',promptMd:'PV=nRT',answer:'기체 법칙',solution:'이상기체 가정'}]};else args.program_text='1+1';
+      const tool=mode==='exam_paper'?'save_course_problem_pack':'save_course_casio_project';
+      const saved=await invoke(tool,args);const retried=await invoke(tool,args);assert.equal(saved.id,retried.id);
+      const progress=await invoke('get_course_generation_progress',{job_id:job.id});assert.equal(progress.status,'complete');assert.equal(progress.document_id,null);assert.equal(progress.output_id,saved.id);
+      const notes=await (await request('/api/v2/notes?course_id='+c.id)).json();assert.equal(notes.some(n=>n.id===job.id),false);
+    }
   });
   console.log(`Worker integration: ${checks} checks passed. Live login and browser interaction remain unverified.`);
 }finally{await mf.dispose();}
