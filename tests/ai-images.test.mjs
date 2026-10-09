@@ -40,3 +40,20 @@ test('Page upload rejects invalid bytes and unauthorized users',async()=>{
  assert.equal((await request('Bearer b',image)).status,404);
  assert.equal(bucket.map.size,1);
 });
+test('PDF preparation saves text for each image and resumes an existing page',async()=>{
+ const {repo,handler}=setup();
+ const pdf=new Uint8Array(90);pdf.set([37,80,68,70,45]);
+ const {id}=await repo.upload('u1',{course_id:'c1',title:'여러 페이지',source_type:'lecture_slides',filename:'lecture.pdf',buffer:pdf});
+ await repo.setPdfPageCount('u1',{material_id:id,page_count:2});
+ const image=new Uint8Array(90);image.set([255,216,255]);
+ const save=(user,page,text)=>handler(new Request('https://site.example/api/v2/page-text',{method:'POST',headers:{authorization:user,'content-type':'application/json'},body:JSON.stringify({material_id:id,page_num:page,text})}));
+ for(const page of [1,2]){
+  await repo.uploadPageImage('u1',{material_id:id,page_num:page,mime_type:'image/jpeg',bytes:image});
+  assert.equal((await save('Bearer a',page,`페이지 ${page} 원문`)).status,201);
+ }
+ assert.equal((await save('Bearer a',1,'이어하기 원문')).status,201);
+ assert.deepEqual((await repo.pageStatus('u1',{material_id:id})).prepared_pages,[1,2]);
+ assert.equal((await repo.getOriginalText('u1',{material_id:id,page_num:1})).pages[0].extracted_text,'이어하기 원문');
+ assert.equal((await repo.getOriginalText('u1',{material_id:id,page_num:2})).pages[0].extracted_text,'페이지 2 원문');
+ assert.equal((await save('Bearer b',1,'변조')).status,404);
+});

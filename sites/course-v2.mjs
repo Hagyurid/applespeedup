@@ -147,7 +147,7 @@ export function createCourseLibrary(db,bucket){
    const m=await source(user,material_id,true);
    if(m.mime_type!=='application/pdf'||!Number.isInteger(page_num)||page_num<1||page_num>m.page_count||
       typeof text!=='string'||text.length>100000)fail('BAD_REQUEST');
-   const updated=await q("UPDATE course_material_page_images SET extracted_text=?,updated_at=CURRENT_TIMESTAMP WHERE material_id=? AND page_num=?",text,page_num,material_id).run();
+   const updated=await q("UPDATE course_material_page_images SET extracted_text=?,updated_at=CURRENT_TIMESTAMP WHERE material_id=? AND page_num=?",text,material_id,page_num).run();
    if(updated.meta.changes!==1)fail('NOT_FOUND');
    return {material_id,page_num,saved:true};
   },

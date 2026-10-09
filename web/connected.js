@@ -84,8 +84,9 @@ async function prepareStoredPdf(materialId,file){
       ?`페이지 준비 일시정지 · 자료 목록에서 이어할 수 있습니다.`
       :`${result.pageCount}페이지 준비 완료 · ChatGPT에서 OCR 검토를 시작하세요.`;
     await refreshOfferingData();
-  }catch(e){$('pdfProgress').textContent='페이지 준비 중단 · 자료 목록에서 다시 시작하세요.';fail(e.message);}
-  finally{state.pdfTask=null;$('cancelPdf').hidden=true;}
+  }catch(e){$('pdfProgress').textContent='페이지 준비 중단 · 자료 목록에서 이어하기를 누르세요.';fail(e.message);
+    try{await refreshOfferingData();}catch{/* Keep the original preparation error visible. */}}
+  finally{state.pdfTask=null;$('cancelPdf').hidden=true;renderSources();}
 }
 const sourceWeeks=()=>[...document.querySelectorAll('#weeksGrid input:checked')].map(el=>Number(el.value));
 const updateWeeksSummary=()=>{$('weeksSummary').textContent=sourceWeeks().length?`선택: ${sourceWeeks().join(', ')}주차`:'주차 미지정 · 선택해서 변경';};
