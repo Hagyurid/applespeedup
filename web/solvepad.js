@@ -3,7 +3,6 @@ import {renderNoteMarkdown,noteMathReady} from './note-render.js';
 const $=id=>document.getElementById(id);
 const asText=value=>String(value??'');
 const answerText=q=>q.answer?.value??q.answer?.text??q.answer??'';
-const normalize=value=>asText(value).trim().replace(/\s+/g,' ').toLowerCase();
 function questionTitle(q,index){return asText(q.title||q.section||`문제 ${index+1}`);}
 function attemptData(row){
   try{return row?.data_json?JSON.parse(row.data_json):{}}catch{return {}}
@@ -29,16 +28,15 @@ export function createSolvePad({call,json,notify,onError}){
   function status(text){$('solveSaveStatus').textContent=text;}
   function snapshot(){return {pack_id:s.packId,question_id:asText(key()),answer:s.answer,
     strokes:s.pages,result:s.result,bookmarked:s.bookmarked};}
-  function capture(){s.answer=$('solveAnswer').value;}
   function markDirty(){
     if(!s.writable)return;
-    capture();s.dirty=true;status('저장 중…');
+    s.dirty=true;status('저장 중…');
     clearTimeout(s.timer);s.timer=setTimeout(()=>{void flush().catch(e=>onError('풀이 저장 실패: '+e.message));},650);
   }
   async function flush(){
     clearTimeout(s.timer);
     if(!s.dirty||!s.packId||!key()||!s.writable)return;
-    capture();const payload=snapshot();s.dirty=false;
+    const payload=snapshot();s.dirty=false;
     s.saving=s.saving.catch(()=>{}).then(()=>call('/api/v2/attempt',json(payload)));
     try{
       await s.saving;
@@ -121,18 +119,21 @@ export function createSolvePad({call,json,notify,onError}){
     const node=$('solveQuestionList'),picker=$('solveQuestionSelect');node.replaceChildren();picker.replaceChildren();
     const filter=$('solveFilter').value;
     s.questions.forEach((q,index)=>{
-      const a=s.attempts.get(asText(q.id))||{};
-      if(filter==='bookmarked'&&!a.bookmarked&&!(index===s.index&&s.bookmarked))return;
-      if(filter==='wrong'&&a.result!=='wrong'&&!(index===s.index&&s.result==='wrong'))return;
+      const a=index===s.index?{result:s.result,bookmarked:s.bookmarked}:s.attempts.get(asText(q.id))||{};
+      if(filter==='bookmarked'&&!a.bookmarked)return;
+      if(filter==='wrong'&&a.result!=='wrong')return;
       const b=document.createElement('button');b.type='button';
       b.classList.toggle('active',index===s.index);
       b.textContent=`${index+1}. ${questionTitle(q,index)}`;
       const meta=document.createElement('small');
-      meta.textContent=[a.bookmarked?'★':'',a.result==='correct'?'정답':a.result==='wrong'?'오답':a.answer?'풀이 중':''].filter(Boolean).join(' · ');
+      meta.textContent=[a.bookmarked?'★':'',a.result==='correct'?'정답':a.result==='wrong'?'오답':''].filter(Boolean).join(' · ');
       b.append(meta);b.onclick=()=>{void open(index).catch(e=>onError(e.message))};node.append(b);
       picker.add(new Option(`${index+1}. ${questionTitle(q,index)}`,String(index)));
     });
     if(!node.children.length){const p=document.createElement('p');p.textContent='해당하는 문제가 없습니다.';node.append(p);}
+    const indices=[...picker.options].map(x=>Number(x.value));
+    $('solveSheet').hidden=!indices.includes(s.index);$('solveFilteredEmpty').hidden=indices.includes(s.index);
+    $('solvePrev').disabled=!indices.some(x=>x<s.index);$('solveNext').disabled=!indices.some(x=>x>s.index);
     if(picker.options.length)picker.value=String(s.index);
     else picker.add(new Option('해당하는 문제가 없습니다.',''));
   }
@@ -145,19 +146,14 @@ export function createSolvePad({call,json,notify,onError}){
     if(token!==s.loadToken)return;
     const choices=$('solveChoices');choices.replaceChildren();
     if(Array.isArray(q.choices))q.choices.forEach((choice,index)=>{
-      const value=asText(choice.value??choice.id??index+1),label=document.createElement('label'),radio=document.createElement('input');
-      radio.type='radio';radio.name='solveChoice';radio.value=value;radio.checked=s.answer===value;radio.disabled=!s.writable;
-      radio.onchange=()=>{$('solveAnswer').value=value;markDirty()};
-      const content=document.createElement('span');label.append(radio,content);choices.append(label);void renderPrompt(content,choice.text??choice.label??choice);
+      const label=document.createElement('div'),content=document.createElement('span');
+      label.append(document.createTextNode(`${index+1}. `),content);choices.append(label);void renderPrompt(content,choice.text??choice.label??choice);
     });
-    $('solveAnswer').value=s.answer;
     $('solveBookmark').textContent=s.bookmarked?'★ 북마크 해제':'☆ 북마크';
     $('solveBookmark').setAttribute('aria-pressed',String(s.bookmarked));
-    $('solveFeedback').hidden=!s.result;
-    $('solveFeedback').textContent=s.result==='correct'?'정답입니다.':s.result==='wrong'?'오답입니다. 해설을 확인하고 다시 풀어보세요.':'저장한 풀이입니다.';
-    $('solveFeedback').className='solve-feedback '+(s.result==='correct'?'correct':s.result==='wrong'?'wrong':'');
+    renderResult();
     $('solveReveal').hidden=true;$('solveReveal').replaceChildren();
-    $('solvePrev').disabled=s.index===0;$('solveNext').disabled=s.index===s.questions.length-1;
+
     status(s.attempts.has(asText(q.id))?'사이트에 저장됨':'작성하면 자동 저장');
     renderList();redraw();
   }
@@ -165,9 +161,20 @@ export function createSolvePad({call,json,notify,onError}){
     if(index<0||index>=s.questions.length||index===s.index)return;
     await flush();s.index=index;loadAttempt();await renderQuestion();
   }
-  $('solveFilter').onchange=renderList;
+  const visibleIndices=()=>s.questions.map((q,index)=>({q,index})).filter(({q,index})=>{
+    const a=index===s.index?{result:s.result,bookmarked:s.bookmarked}:s.attempts.get(asText(q.id))||{};
+    return $('solveFilter').value==='wrong'?a.result==='wrong':$('solveFilter').value==='bookmarked'?a.bookmarked:true;
+  }).map(x=>x.index);
+  function moveVisible(direction){
+    const indices=visibleIndices();
+    const index=direction>0?indices.find(x=>x>s.index):indices.findLast(x=>x<s.index);
+    if(index!==undefined)void open(index).catch(e=>onError(e.message));
+  }
+  $('solveFilter').onchange=()=>{
+    renderList();const indices=visibleIndices();
+    if(indices.length&&!indices.includes(s.index))void open(indices[0]).catch(e=>onError(e.message));
+  };
   $('solveQuestionSelect').onchange=e=>{if(e.target.value!=='')void open(Number(e.target.value)).catch(err=>onError(err.message));};
-  $('solveAnswer').oninput=markDirty;
   $('solvePen').onclick=()=>setTool('pen');
   $('solveErase').onclick=()=>setTool('erase');
   function setTool(name){
@@ -182,20 +189,24 @@ export function createSolvePad({call,json,notify,onError}){
   $('solvePrevPage').onclick=()=>{if(s.pageIndex>0){s.pageIndex--;redraw()}};
   $('solveNextPage').onclick=()=>{if(s.pageIndex<s.pages.length-1){s.pageIndex++;redraw()}};
   $('solveAddPage').onclick=()=>{if(s.pages.length<20){s.pages.push([]);s.pageIndex=s.pages.length-1;redraw();markDirty()}};
-  $('solvePrev').onclick=()=>{void open(s.index-1).catch(e=>onError(e.message))};
-  $('solveNext').onclick=()=>{void open(s.index+1).catch(e=>onError(e.message))};
+  $('solvePrev').onclick=()=>{moveVisible(-1)};
+  $('solveNext').onclick=()=>{moveVisible(1)};
   $('solveBookmark').onclick=()=>{s.bookmarked=!s.bookmarked;$('solveBookmark').textContent=s.bookmarked?'★ 북마크 해제':'☆ 북마크';$('solveBookmark').setAttribute('aria-pressed',String(s.bookmarked));markDirty();renderList()};
-  $('solveCheck').onclick=()=>{
-    const q=current();capture();
-    if(!s.answer.trim()){onError('답안을 입력하거나 선택해 주세요.');return}
-    const expected=q.answer?.acceptable?.length?q.answer.acceptable:[answerText(q)];
-    if(expected.every(x=>!asText(x).trim()))s.result='self_review';
-    else s.result=expected.some(x=>normalize(x)===normalize(s.answer))?'correct':'wrong';
-    $('solveFeedback').hidden=false;
-    $('solveFeedback').textContent=s.result==='correct'?'정답입니다.':s.result==='wrong'?'오답입니다. 해설을 확인하고 다시 풀어보세요.':'자동 채점 답이 없어 해설과 비교해 주세요.';
-    $('solveFeedback').className='solve-feedback '+(s.result==='correct'?'correct':s.result==='wrong'?'wrong':'');
-    markDirty();renderList();
-  };
+  function renderResult(){
+    for(const [id,value] of [['solveCorrect','correct'],['solveWrong','wrong'],['solveUnmarked','']]){
+      $(id).setAttribute('aria-pressed',String(s.result===value));
+    }
+    $('solveFeedback').hidden=!['correct','wrong'].includes(s.result);
+    $('solveFeedback').textContent=s.result==='correct'?'정답으로 기록했습니다.':'오답으로 기록했습니다.';
+    $('solveFeedback').className='solve-feedback '+s.result;
+  }
+  function recordResult(result){
+    if(!s.writable||!current())return;
+    s.result=result;markDirty();renderResult();renderList();
+  }
+  $('solveCorrect').onclick=()=>recordResult('correct');
+  $('solveWrong').onclick=()=>recordResult('wrong');
+  $('solveUnmarked').onclick=()=>recordResult('');
   $('solveHint').onclick=()=>{
     const hints=current().hints||[];
     const box=$('solveReveal');box.hidden=false;box.replaceChildren();
@@ -225,8 +236,7 @@ export function createSolvePad({call,json,notify,onError}){
     },
     setWritable(value){
       s.writable=!!value;
-      for(const id of ['solveAnswer','solveCheck','solveBookmark','solvePen','solveErase','solveWidth','solveUndo','solveClear','solveAddPage'])$(id).disabled=!s.writable;
-      for(const input of $('solveChoices').querySelectorAll('input'))input.disabled=!s.writable;
+      for(const id of ['solveCorrect','solveWrong','solveUnmarked','solveBookmark','solvePen','solveErase','solveWidth','solveUndo','solveClear','solveAddPage'])$(id).disabled=!s.writable;
       redraw();
     },
     flush

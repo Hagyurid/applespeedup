@@ -176,16 +176,16 @@
           <div id="solveWorkspace" class="solve-layout" hidden>
             <aside class="card solve-index" aria-label="문제 목록">
               <div class="solve-index-head"><strong id="solvePackTitle">문제팩</strong><span id="solveCount"></span></div>
-              <label class="field">문제 보기<select id="solveFilter"><option value="all">전체</option><option value="bookmarked">북마크</option><option value="wrong">오답</option></select></label>
+              <label class="field">문제 보기<select id="solveFilter"><option value="all">전체</option><option value="bookmarked">북마크</option><option value="wrong">오답만 보기</option></select></label>
               <label class="field solve-mobile-picker">문제 선택<select id="solveQuestionSelect" aria-label="풀 문제 선택"></select></label>
               <div id="solveQuestionList" class="solve-question-list"></div>
             </aside>
-            <section class="card solve-sheet" aria-label="현재 문제">
+            <div id="solveFilteredEmpty" class="card" hidden>조건에 맞는 문제가 없습니다. 전체 보기로 바꾸거나 목록에서 문제를 선택하세요.</div>
+            <section id="solveSheet" class="card solve-sheet" aria-label="현재 문제">
               <div class="solve-heading"><div><span id="solveNumber" class="eyebrow"></span><h2 id="solveQuestionTitle"></h2></div><span id="solveSaveStatus" role="status">저장 대기</span></div>
               <div id="solvePrompt" class="solve-prompt"></div>
               <div id="solveChoices" class="solve-choices"></div>
-              <label class="field">내 답안<input id="solveAnswer" autocomplete="off" placeholder="답을 입력하거나 선택하세요"></label>
-              <div class="solve-actions"><button id="solveCheck" class="primary small" type="button">답 확인</button><button id="solveHint" class="ghost small" type="button">힌트</button><button id="solveSolution" class="ghost small" type="button">해설 보기</button><button id="solveBookmark" class="ghost small" type="button" aria-pressed="false">북마크</button></div>
+              <div class="solve-actions"><button id="solveCorrect" class="ghost small" type="button" aria-pressed="false">정답 기록</button><button id="solveWrong" class="ghost small" type="button" aria-pressed="false">오답 기록</button><button id="solveUnmarked" class="ghost small" type="button" aria-pressed="true">기록 해제</button><button id="solveHint" class="ghost small" type="button">힌트</button><button id="solveSolution" class="ghost small" type="button">해설 보기</button><button id="solveBookmark" class="ghost small" type="button" aria-pressed="false">북마크</button></div>
               <div id="solveFeedback" class="solve-feedback" role="status" hidden></div>
               <div id="solveReveal" class="solve-reveal" hidden></div>
               <div class="solve-paper-head"><strong>풀이 필기</strong><span id="solvePageLabel"></span></div>

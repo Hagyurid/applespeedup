@@ -231,3 +231,6 @@ body{background:#f6f7f9}
  .note-preview .note-page-break>*{display:none!important}.note-preview .note-page-break::before,.note-preview .note-page-break::after{display:none!important}
  .note-preview .note-page-break+h1,.note-preview .note-page-break+h2,.note-preview .note-page-break+h3{margin-top:0}
 }
+
+.solve-actions button[aria-pressed="true"]{background:#fff0f1;border-color:#df414a;color:#b92e38}
+.solve-choices>div{display:flex;gap:8px;padding:8px 0}
