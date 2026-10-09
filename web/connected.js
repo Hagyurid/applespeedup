@@ -39,7 +39,7 @@ function bindNavigation(){
 async function call(path,options={}){
   const r=await fetch(path,{credentials:'same-origin',cache:'no-store',...options});
   if(!r.ok){
-    const messages={401:'ChatGPT 로그인이 필요합니다.',403:'이 자료를 변경할 권한이 없습니다.',404:'자료를 찾을 수 없거나 접근 권한이 없습니다.',409:'다른 수정본이 먼저 저장됐습니다. 작성 내용은 유지됩니다. 최신 정리본을 확인하세요.',413:'파일이 너무 큽니다. 최대 8 MiB까지 등록할 수 있습니다.',423:'로그인 검증이 끝날 때까지 자료 변경이 잠겨 있습니다.',503:'저장소에 연결하지 못했습니다. 작성 내용을 유지하고 다시 시도하세요.'};
+    const messages={401:'ChatGPT 로그인이 필요합니다.',403:'이 자료를 변경할 권한이 없습니다.',404:'자료를 찾을 수 없거나 접근 권한이 없습니다.',409:'다른 수정본이 먼저 저장됐습니다. 작성 내용은 유지됩니다. 최신 정리본을 확인하세요.',413:'파일이 너무 큽니다. 최대 50 MiB까지 등록할 수 있습니다.',423:'로그인 검증이 끝날 때까지 자료 변경이 잠겨 있습니다.',503:'저장소에 연결하지 못했습니다. 작성 내용을 유지하고 다시 시도하세요.'};
     const e=Error(messages[r.status]||`요청을 처리하지 못했습니다. (HTTP ${r.status})`);e.status=r.status;
     if(r.status===409&&path.includes('/attempt'))e.message='다른 기기에서 풀이를 먼저 저장했습니다. 기기 초안은 보존됩니다. 최신 풀이를 불러온 뒤 초안을 복구하세요.';
     if(r.status===503){const body=await r.json().catch(()=>({}));if(body.error==='STORAGE_DELETE_FAILED')e.message='파일 삭제가 완료되지 않았습니다. 같은 삭제를 다시 실행해 주세요.';}
@@ -390,8 +390,8 @@ async function registerSource(){
   const weeks=type==='past_exam'?[]:sourceWeeks();
   const exam_year=type==='past_exam'&&$('examYear').value!==''?Number($('examYear').value):null;let r;
   if(exam_year!==null&&(!Number.isInteger(exam_year)||exam_year<1900||exam_year>2100))throw Error('기출 연도는 1900–2100 사이의 정수로 입력하세요.');
-  if(file){if(file.size>8*1024*1024)throw Error('최대 8 MiB까지 등록할 수 있습니다.');
-    const headers={'Content-Type':'application/octet-stream','X-Course-Id':o.id,'X-Source-Type':type,'X-Title':encodeURIComponent(name),'X-Filename':encodeURIComponent(file.name),'X-Provenance':encodeURIComponent(provenance),'X-Weeks':JSON.stringify(weeks),...(exam_year!==null?{'X-Exam-Year':String(exam_year)}:{})};
+  if(file){if(file.size>50*1024*1024)throw Error('최대 50 MiB까지 등록할 수 있습니다.');
+    const headers={'Content-Type':'application/octet-stream','X-Upload-Size':String(file.size),'X-Course-Id':o.id,'X-Source-Type':type,'X-Title':encodeURIComponent(name),'X-Filename':encodeURIComponent(file.name),'X-Provenance':encodeURIComponent(provenance),'X-Weeks':JSON.stringify(weeks),...(exam_year!==null?{'X-Exam-Year':String(exam_year)}:{})};
     r=await call('/api/v2/upload',{method:'POST',headers,body:file});
   }else{if(type!=='transcript')throw Error('원본 파일을 선택하세요. 텍스트를 직접 입력했다면 자료 유형을 전사본으로 선택해 주세요.');
     if(!$('transcript').value.trim())throw Error('전사본 내용을 입력하거나 원본 파일을 선택하세요.');

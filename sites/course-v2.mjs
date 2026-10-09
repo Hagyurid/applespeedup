@@ -7,6 +7,7 @@ const uid=()=>crypto.randomUUID();
 const clean=(value,max)=>{if(typeof value!=='string'||!value.trim()||value.length>max)fail('BAD_REQUEST');return value.trim();};
 const TYPES=new Set(['lecture_slides','transcript','textbook','past_exam','other']);
 const FILE_TYPES={'.txt':'text/plain','.md':'text/markdown','.pdf':'application/pdf','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document','.doc':'application/msword','.hwp':'application/x-hwp','.hwpx':'application/vnd.hancom.hwpx','.pptx':'application/vnd.openxmlformats-officedocument.presentationml.presentation'};
+export const MAX_COURSE_UPLOAD_BYTES=50*1024*1024;
 const OLE_HEADER=[208,207,17,224,161,177,26,225];
 const isZip=data=>data[0]===80&&data[1]===75&&data[2]===3&&data[3]===4;
 const isOle=data=>OLE_HEADER.every((value,index)=>data[index]===value);
@@ -23,11 +24,20 @@ function metadata(type,weeks=[],examYear=null){
  return {weeks:[...new Set(weeks)].sort((a,b)=>a-b),examYear:null};
 }
 async function read(request,max){
- const length=Number(request.headers.get('content-length')||0);if(length>max)fail('BAD_FILE');
- const reader=request.body?.getReader();if(!reader)fail('BAD_FILE');const chunks=[];let n=0;
- try{while(true){const x=await reader.read();if(x.done)break;n+=x.value.byteLength;if(n>max)fail('BAD_FILE');chunks.push(x.value)}}finally{reader.releaseLock()}
- if(!n)fail('BAD_FILE');const buf=new Uint8Array(n);let offset=0;for(const c of chunks){buf.set(c,offset);offset+=c.length}return buf;
+ const length=Number(request.headers.get('content-length')||request.headers.get('x-upload-size')||0);
+ if(!Number.isSafeInteger(length)||length<0)fail('BAD_FILE');
+ if(length>max)fail('FILE_TOO_LARGE');
+ const reader=request.body?.getReader();if(!reader)fail('BAD_FILE');
+ // Known-size file uploads fill one buffer instead of retaining chunks plus a second full copy.
+ const buffer=length?new Uint8Array(length):null,chunks=[];let n=0;
+ try{while(true){const x=await reader.read();if(x.done)break;const offset=n;n+=x.value.byteLength;
+   if(n>max){await reader.cancel();fail('FILE_TOO_LARGE');}
+   if(buffer){if(n>length){await reader.cancel();fail('BAD_FILE');}buffer.set(x.value,offset);}else chunks.push(x.value);
+ }}finally{reader.releaseLock();}
+ if(!n||buffer&&n!==length)fail('BAD_FILE');if(buffer)return buffer;
+ const result=new Uint8Array(n);let offset=0;for(const c of chunks){result.set(c,offset);offset+=c.length;}return result;
 }
+
 export function createCourseLibrary(db,bucket){
  if(!db?.prepare||!db?.batch)throw Error('D1 binding required');
  const originalCache=new Map();
@@ -131,7 +141,7 @@ export function createCourseLibrary(db,bucket){
   },
   async upload(user,{course_id,title,source_type,weeks=[],exam_year=null,filename,provenance='',buffer}={}){
    await access(user,course_id,true);
-   const data=buffer;if(!(data instanceof Uint8Array)||data.length<4||data.length>8*1024*1024)fail('BAD_FILE');
+   const data=buffer;if(!(data instanceof Uint8Array)||data.length<4||data.length>MAX_COURSE_UPLOAD_BYTES)fail(data?.length>MAX_COURSE_UPLOAD_BYTES?'FILE_TOO_LARGE':'BAD_FILE');
    const meta=metadata(source_type,weeks,exam_year),file=clean(filename,250),name=clean(title||file,250);
    if(typeof provenance!=='string'||provenance.length>400)fail('BAD_REQUEST');
    const extension=/\.[^.]+$/.exec(file.toLowerCase())?.[0],mime=FILE_TYPES[extension];
@@ -556,7 +566,7 @@ export async function handleCourseRequest(request,{db,bucket,userId}){
      return json(await repo.upload(userId,{course_id:request.headers.get('x-course-id'),source_type:request.headers.get('x-source-type'),
        title:decodeURIComponent(request.headers.get('x-title')||''),filename:decodeURIComponent(request.headers.get('x-filename')||''),
        provenance:decodeURIComponent(request.headers.get('x-provenance')||''),
-       weeks,exam_year:year?Number(year):null,buffer:await read(request,8*1024*1024)}),201);
+       weeks,exam_year:year?Number(year):null,buffer:await read(request,MAX_COURSE_UPLOAD_BYTES)}),201);
    }
    const post={'/api/v2/text':'registerText','/api/v2/pdf-pages':'setPdfPageCount','/api/v2/page-text':'savePageText',
      '/api/v2/review':'saveReview','/api/v2/finalize':'finalizeReview',
@@ -569,7 +579,7 @@ export async function handleCourseRequest(request,{db,bucket,userId}){
    }
    return json({error:'NOT_FOUND'},404);
  }catch(e){
-   const status={BAD_REQUEST:400,BAD_FILE:400,FORBIDDEN:403,NOT_FOUND:404,REVISION_CONFLICT:409,REVIEW_INCOMPLETE:422,OUTLINE_REQUIRED:422,STORAGE_NOT_CONFIGURED:503,STORAGE_DELETE_FAILED:503}[e?.code]||500;
+   const status={BAD_REQUEST:400,BAD_FILE:400,FILE_TOO_LARGE:413,FORBIDDEN:403,NOT_FOUND:404,REVISION_CONFLICT:409,REVIEW_INCOMPLETE:422,OUTLINE_REQUIRED:422,STORAGE_NOT_CONFIGURED:503,STORAGE_DELETE_FAILED:503}[e?.code]||500;
    return json({error:status===500?'Request failed':e.code},status);
  }
 }
