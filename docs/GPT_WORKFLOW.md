@@ -7,7 +7,7 @@
 | 용도 | 플러그인 도구 | 저장·확인 |
 |---|---|---|
 | 자료 목록 | `list_course_materials` | 선택한 과목의 자료 ID와 상태 |
-| PDF 준비 확인과 원본 판독 | `get_course_page_status`, `get_course_page_image`, `get_course_original_text` | 실제 R2 이미지와 D1의 문자 추출본 |
+| PDF 준비 확인과 원본 판독 | `get_course_page_status`, `get_course_page_images` (최대 8페이지), `get_course_page_image`, `get_course_original_text` | 실제 R2 이미지와 D1의 문자 추출본 |
 | 원문 교정 | `save_course_review_page`, `finalize_course_review` | D1의 원문·교정본·근거·미확인 항목 |
 | 생성 근거 | `get_course_verified_text` | 검토 완료한 교정본만 반환 |
 | 목차와 본문 | `start_course_generation`, `save_course_outline`, `save_course_part` | D1 작업·정리본·버전 이력 |
@@ -18,7 +18,7 @@
 
 1. 사이트에서 과목과 자료를 등록합니다. 녹음 파일은 받지 않으며 사용자가 TXT/MD 전사본을 입력 또는 업로드합니다.
 2. PDF는 사이트의 PDF.js가 페이지 수·이미지·가능한 문자 추출본을 준비합니다. `get_course_page_status`의 준비 페이지와 페이지 수가 일치하지 않으면 검토 완료로 처리하지 않습니다.
-3. 각 PDF/이미지 페이지의 `get_course_page_image` 이미지 자체를 보고, `get_course_original_text`의 추출 문자를 보조 자료로 대조합니다. 긴 원문은 `next_offset`이 없을 때까지 읽고 PDF는 `page_num`을 순서대로 확인합니다.
+3. PDF는 `get_course_page_images`로 최대 8페이지씩 한 번에 이미지 묶음을 받아 각 페이지를 빠짐없이 실제로 판독합니다. 읽기 실패한 페이지는 `get_course_page_image`로 개별 재요청합니다. 각 페이지의 원본 이미지를 보고, `get_course_original_text`의 추출 문자를 보조 자료로 대조합니다. 긴 원문은 `next_offset`이 없을 때까지 읽고 PDF는 `page_num`을 순서대로 확인합니다.
 4. 전사본은 원문과 같은 과목의 첨부 자료를 대조합니다. 외부에서 확인한 사실은 별도 근거로 구분합니다. 확실하지 않은 수식·수치·기호는 `unresolved`에 남깁니다.
 5. `save_course_review_page`로 각 페이지의 `raw_text`, `corrected_text`, `evidence_ids`, `unresolved`를 저장하고, 모든 페이지 검토와 미확인 항목 해소 후 `finalize_course_review`를 호출합니다. 교정 완료는 AI가 무오류를 보증한다는 뜻이 아닙니다.
 
@@ -33,3 +33,10 @@
 ## 검증 범위
 
 자동 테스트는 인증 없는 요청, 다른 사용자 자료 접근, D1/R2 저장, PDF 이미지 전달, 교정, 목차 선저장, 절별 자동 저장, 버전 충돌, 이어하기를 검사합니다. 실제 사용자 PDF가 없는 동안 운영 플러그인의 이미지 판독과 쓰기 결과는 별도 실사용 검증이 필요합니다.
+
+## 처리 최적화 (개발 브랜치)
+
+- PDF 페이지 준비는 최대 3개 작업을 동시에 실행합니다. 이미 준비된 페이지는 재렌더링·재추출하지 않고 건너뜁니다.
+- GPT는 `get_course_page_images({material_id,start_page,count})`로 연속 1~8페이지의 이미지 블록과 번호를 함께 받습니다. 각 페이지의 실제 이미지 판독, 교정본과 근거 기록은 개별 페이지 단위로 유지합니다.
+- 이미지 누락, 읽기 실패, 모호한 수식은 정상 처리로 간주하지 않으며 해당 페이지를 다시 확인합니다.
+- 여러 장을 한 번에 받아도 GPT 모델의 OCR 정확성은 보장되지 않습니다. 지나치게 복잡한 페이지는 1~3페이지씩 나누어 검토합니다.
