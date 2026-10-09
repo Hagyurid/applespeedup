@@ -18,15 +18,22 @@ test('ChatGPT transcript correction saves a separate verified copy and blocks ot
  assert.equal(value(await call('alice','get_course_original_text',{material_id:id})).original_text,'티엘 모듈러스');
  assert.equal((await call('bob','get_course_original_text',{material_id:id})).result.isError,true);
  assert.equal((await call('alice','save_course_review_page',{material_id:id,page_num:1,raw_text:'티엘 모듈러스',corrected_text:'Thiele modulus'},false)).result.isError,true);
- assert.equal(value(await call('alice','save_course_review_page',{material_id:id,page_num:1,raw_text:'티엘 모듈러스',corrected_text:'Thiele modulus',unresolved:['수식 근거 확인 필요']})).review_status,'needs_review');
- assert.equal((await call('alice','finalize_course_review',{material_id:id,page_count:1})).result.isError,true);
+ assert.equal(value(await call('alice','save_course_review_page',{material_id:id,page_num:1,raw_text:'티엘 모듈러스',corrected_text:'Thiele modulus',unresolved:['수식 근거 확인 필요']})).review_status,'reviewed_with_issues');
+ const reviewed=value(await call('alice','get_course_verified_text',{material_id:id}));
+ assert.deepEqual(reviewed.pages[0].unresolved,['수식 근거 확인 필요']);
+ const job=value(await call('alice','start_course_generation',{course_id:'chem',mode:'detailed_note',source_ids:[id]}));
+ assert.deepEqual(job.review_concerns[0].unresolved,['수식 근거 확인 필요']);
+ value(await call('alice','save_course_outline',{job_id:job.id,sections:[{title:'정리'}]}));
+ value(await call('alice','save_course_part',{job_id:job.id,section_index:1,content_markdown:'확인된 개념'}));
+ assert.match((await repo.getNote('alice',{id:job.id})).content_markdown,/자료 검토 주의사항[\s\S]*수식 근거 확인 필요/);
+ assert.equal((await repo.getJobProgress('alice',{job_id:job.id})).review_concerns.length,1);
  value(await call('alice','save_course_review_page',{material_id:id,page_num:1,raw_text:'티엘 모듈러스',corrected_text:'Thiele modulus',unresolved:[]}));
- value(await call('alice','finalize_course_review',{material_id:id,page_count:1}));
+ assert.equal((await repo.listMaterials('alice',{course_id:'chem'}))[0].review_status,'reviewed');
  assert.equal(value(await call('alice','get_course_verified_text',{material_id:id})).pages[0].corrected_text,'Thiele modulus');
  assert.equal((await repo.getOriginalText('alice',{material_id:id})).original_text,'티엘 모듈러스');
 });
 test('PDF page count, page image and review completeness stay scoped to the owner',async()=>{
- const {repo,call,bucket}=setup();
+ const {repo,call,bucket,db}=setup();
  const file=new Uint8Array(90);file.set([37,80,68,70,45],0);
  const {id}=await repo.upload('alice',{course_id:'chem',title:'2쪽 강의자료',source_type:'lecture_slides',filename:'lecture.pdf',buffer:file});
  await repo.setPdfPageCount('alice',{material_id:id,page_count:2});
@@ -40,5 +47,17 @@ test('PDF page count, page image and review completeness stay scoped to the owne
  await repo.saveReview('alice',{material_id:id,page_num:1,raw_text:'원문',corrected_text:'교정'});
  await assert.rejects(()=>repo.finalizeReview('alice',{material_id:id,page_count:1}),/REVIEW_INCOMPLETE/);
  await assert.rejects(()=>repo.finalizeReview('alice',{material_id:id,page_count:2}),/REVIEW_INCOMPLETE/);
- assert.equal(bucket.map.size,2);
+ assert.equal((await repo.verifiedText('alice',{material_id:id})).available_for_generation,false);
+ await assert.rejects(()=>repo.startJob('alice',{course_id:'chem',mode:'detailed_note',source_ids:[id]}),/REVIEW_INCOMPLETE/);
+ await repo.uploadPageImage('alice',{material_id:id,page_num:2,mime_type:'image/png',bytes:raster});
+ await repo.saveReview('alice',{material_id:id,page_num:2,raw_text:'数値',corrected_text:'수치 미확인',unresolved:['단위 판독 필요']});
+ assert.equal((await repo.listMaterials('alice',{course_id:'chem'}))[0].review_status,'reviewed_with_issues');
+ // Existing saved reviews become usable without a migration or re-save.
+ db.db.prepare("UPDATE course_materials SET review_status='pending_review' WHERE id=?").run(id);
+ assert.equal((await repo.listMaterials('alice',{course_id:'chem'}))[0].available_for_generation,true);
+ const job=await repo.startJob('alice',{course_id:'chem',mode:'detailed_note',source_ids:[id]});
+ assert.equal(job.review_concerns[0].page_num,2);
+ await assert.rejects(()=>repo.verifiedText('bob',{material_id:id,page_num:2}),/NOT_FOUND/);
+ await assert.rejects(()=>repo.saveReview('bob',{material_id:id,page_num:2,raw_text:'raw',corrected_text:'x'}),/NOT_FOUND/);
+ assert.equal(bucket.map.size,3);
 });

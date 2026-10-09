@@ -85,7 +85,6 @@ try{
     };
     assert.equal(JSON.parse((await invoke('get_course_original_text',{material_id:text.id})).content[0].text).original_text,'티엘 모듈러스');
     assert.equal((await invoke('save_course_review_page',{material_id:text.id,page_num:1,raw_text:'티엘 모듈러스',corrected_text:'Thiele modulus'})).isError,false);
-    assert.equal((await invoke('finalize_course_review',{material_id:text.id,page_count:1})).isError,false);
     assert.equal(JSON.parse((await invoke('get_course_verified_text',{material_id:text.id})).content[0].text).pages[0].corrected_text,'Thiele modulus');
     const pdf=await (await request('/api/v2/upload',{method:'POST',headers:{...alice,'content-type':'application/octet-stream','x-course-id':c.id,'x-source-type':'lecture_slides','x-title':encodeURIComponent('자료'),'x-filename':'scan.pdf'},body:new TextEncoder().encode('%PDF-1.4 local page')})).json();
     assert.ok(pdf.id);
@@ -107,9 +106,9 @@ try{
       const r=await request('/mcp',{method:'POST',headers:{...alice,accept:'application/json, text/event-stream'},json:{jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}}});
       assert.equal(r.status,200);const result=(await r.json()).result;assert.equal(result.isError,false,JSON.stringify(result));return JSON.parse(result.content[0].text);
     };
-    await invoke('save_course_review_page',{material_id:text.id,page_num:1,raw_text:'원본',corrected_text:'교정본'});
-    await invoke('finalize_course_review',{material_id:text.id,page_count:1});
+    await invoke('save_course_review_page',{material_id:text.id,page_num:1,raw_text:'원본',corrected_text:'교정본',unresolved:['수식 확인 필요']});
     const job=await invoke('start_course_generation',{course_id:c.id,mode:'detailed_note',source_ids:[text.id]});
+    assert.equal(job.review_concerns[0].unresolved[0],'수식 확인 필요');
     const outline=await invoke('save_course_outline',{job_id:job.id,sections:[{title:'기초'},{title:'응용'}]});
     assert.equal(outline.document_id,job.id);
     const first=await invoke('save_course_part',{job_id:job.id,section_index:1,content_markdown:'검토한 첫 절'});

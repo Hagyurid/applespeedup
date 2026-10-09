@@ -19,7 +19,7 @@ test('Six responsive workspaces retain course registration, transcript, GPT, not
  assert.match(css,/\.mobile-nav\{grid-template-columns:repeat\(6/);
 });
 test('Source picker only adds reviewed items and sends explicit source ID list',()=>{
- assert.match(js,/const isReviewed=src=>src\.review_status==='reviewed'/);
+ assert.match(js,/reviewed_with_issues/);
  assert.match(js,/state\.selectedIds\.clear\(\)/);
  assert.match(js,/selectedSources\(\)\.filter\(isReviewed\)/);
  assert.match(js,/get_course_verified_text/);

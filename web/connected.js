@@ -11,7 +11,7 @@ const clear=()=>{$('error').hidden=true;};
 const course=()=>state.courses.find(x=>x.id===$('course').value);
 const offering=()=>course()?{id:course().id}:null;
 const selectedSources=()=>state.sources.filter(x=>state.selectedIds.has(x.id));
-const isReviewed=src=>src.review_status==='reviewed';
+const isReviewed=src=>['reviewed','reviewed_with_issues'].includes(src.review_status);
 function pageFromLocation(){const page=location.hash.slice(1);return pageNames[page]?page:'courses';}
 function showPage(page,{push=false,focus=false}={}){
   const active=pageNames[page]?page:'courses';
@@ -120,7 +120,7 @@ function renderSources(){
     const li=document.createElement('li'),text=document.createElement('span');
     const loc=src.source_type==='past_exam'?(src.exam_year?`${src.exam_year}년`:'연도 미지정'):(src.weeks?.length?`${src.weeks.join(', ')}주차`:'주차 미지정');
     const needsConversion=['application/x-hwp','application/vnd.hancom.hwpx','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.openxmlformats-officedocument.presentationml.presentation'].includes(src.mime_type);
-    const review=src.review_status==='reviewed'?'교정 완료':src.mime_type==='application/pdf'
+    const review=isReviewed(src)?(src.review_status==='reviewed_with_issues'?`검토 저장 · 주의 ${src.issue_pages}쪽`:'검토 저장'):src.mime_type==='application/pdf'
       ?`페이지 준비 ${src.prepared_pages||0}/${src.page_count||'?'} · GPT 검토 대기`:needsConversion?'원본 보관 · PDF/TXT 변환 필요':'GPT 교정 대기';
     text.textContent=`${src.title} · ${types[src.source_type]||src.source_type} · ${loc} · ${review}`;li.append(text);
     if(src.file_name){const b=document.createElement('button');b.type='button';b.className='ghost small';b.textContent='원본 다운로드';b.onclick=()=>{const a=document.createElement('a');a.href=`/api/v2/file/${encodeURIComponent(src.id)}`;a.click();};li.append(b);}
@@ -136,13 +136,13 @@ function renderSources(){
       button.onclick=async()=>{
         const c=course();if(!c)return fail('과목을 선택하세요.');
         const msg=[
-          '@에쁠가속기 아래 자료를 검토해줘. 아직 생성 본문에는 사용하지 마.',
+          '@에쁠가속기 아래 자료를 검수하고 저장해줘.',
           '과목: '+c.name+' (course_id='+c.id+')',
           '자료 ID: '+src.id+' / 제목: '+src.title+' / 유형: '+src.source_type,
           'get_course_page_status로 PDF 페이지 수와 준비 상태를 확인해. 모든 PDF 페이지는 get_course_page_image로 실제 이미지를 보고 판독해.',
           'TXT/MD 전사본은 get_course_original_text로 원문을 읽어. PDF 텍스트 추출본도 참고하되 이미지를 우선 확인해.',
           '같은 과목의 강의자료와 공신력 있는 자료를 대조한 후 save_course_review_page로 원문/교정본/근거/불명확 항목을 기록해.',
-          '모든 페이지가 검증된 경우에만 finalize_course_review를 수행하고, 완료 전에는 본문 생성에 사용하지 마.'
+          '검토 결과를 저장하면 바로 제작에 사용할 수 있게 해줘. 불명확한 항목은 지우지 말고 unresolved에 페이지별로 기록해서 이후 제작할 때도 확인하게 해줘. 이번 요청에서는 본문을 만들지 마.'
         ].join('\n');
         try{await navigator.clipboard.writeText(msg);setStatus('OCR·전사본 검토 요청문을 복사했습니다. ChatGPT에 붙여넣어 실행하세요.');}
         catch{fail('요청문 복사가 차단되었습니다. 브라우저 권한을 확인하세요.');}
@@ -199,7 +199,7 @@ function renderPicker(){
       const row=document.createElement('label');row.className='picker-row';
       const check=document.createElement('input');check.type='checkbox';check.checked=state.selectedIds.has(item.id);
       check.disabled=!isReviewed(item);check.onchange=()=>{if(check.checked)state.selectedIds.add(item.id);else state.selectedIds.delete(item.id);renderPicker();refreshPrompt();};
-      const title=document.createElement('span');title.textContent=item.title+' · '+(types[item.source_type]||item.source_type)+(isReviewed(item)?' · 교정 검토본':' · 검토 대기');
+      const title=document.createElement('span');title.textContent=item.title+' · '+(types[item.source_type]||item.source_type)+(isReviewed(item)?(item.review_status==='reviewed_with_issues'?` · 검토 저장 · 주의 ${item.issue_pages}쪽`:' · 검토 저장'):' · 검토 대기');
       row.append(check,title);group.append(row);
     }box.append(group);
   }
@@ -217,7 +217,7 @@ function refreshPrompt(){
     '명시적으로 선택한 자료 ID ('+picked.length+'개): '+picked.map(x=>x.id).join(', '),
     '사용자가 체크하지 않은 자료는 본문 근거로 사용하지 마.',
     'PDF·이미지·전사본은 get_course_verified_text MCP 도구로 검토된 교정본만 읽어. 원본 PDF/미검토 텍스트를 본문 생성 근거로 사용하지 마.',
-    '검토되지 않은 페이지가 있으면 먼저 원본과 같은 과목 자료를 교차 대조하고 미확인 내용은 확인 필요로 남겨.',
+    '교정본의 unresolved와 작업의 review_concerns를 함께 읽고, 불명확한 수치·수식·주장은 확정하지 마. 해당 절에 확인 필요를 표시하고 확인된 내용으로 제작을 계속해.',
     '반드시 목차를 먼저 만들고 save_course_outline로 저장한 뒤에 본문을 작성해.',
     '이후 각 절마다 save_course_part를 호출해 정리본/버전을 자동 저장해. 별도 저장 지시를 요구하지 마.',
     '파일의 사용자 지정 제목, 주차, 기출 연도는 원본 이름/OCR에서 유추해 덮어쓰지 마.',

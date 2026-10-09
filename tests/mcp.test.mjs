@@ -9,6 +9,7 @@ test('Course-only MCP discovery needs verified identity',async()=>{
  const result=await handleMessage(msg('tools/list',{}),{authenticate:async()=> 'u1'});
  assert.deepEqual(result.result.tools.map(x=>x.name),toolSpecs().map(x=>x.name));
  assert.ok(result.result.tools.some(x=>x.name==='get_course_page_image'));
+ assert.ok(!result.result.tools.some(x=>x.name==='finalize_course_review'));
  assert.ok(result.result.tools.some(x=>x.name==='get_course_original_text'));
  assert.ok(result.result.tools.some(x=>x.name==='get_course_generation_progress'));
  assert.deepEqual(result.result.tools.find(x=>x.name==='save_course_outline').inputSchema.properties.sections.items.required,['title']);
