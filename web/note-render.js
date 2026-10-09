@@ -7,26 +7,38 @@ function trackMath(task){mathTasks.add(task);task.then(()=>mathTasks.delete(task
 export async function noteMathReady(){await Promise.all([...mathTasks]);}
 const el=(tag,text)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;return node;};
 function inline(target,text){
-  const tokens=/(\$\$([^$]+)\$\$|\$([^$\n]+)\$|\*\*([^*]+)\*\*|==([^=]+)==|`([^`]+)`)/g;
+  const tokens=/`(?<code>[^`]+)`|\$\$(?<display>[\s\S]+?)\$\$|\$(?<math>[^$\n]+)\$|\*\*\*(?<both>[\s\S]+?)\*\*\*|\*\*(?<bold>[\s\S]+?)\*\*|\*(?<italic>[^*]+)\*|==(?<highlight>[^=]+)==/g;
+  const appendText=value=>{value.split('\n').forEach((part,index)=>{if(index)target.append(el('br'));if(part)target.append(document.createTextNode(part));});};
   let cursor=0,match;
   while((match=tokens.exec(text))){
-    if(match.index>cursor)target.append(document.createTextNode(text.slice(cursor,match.index)));
-    if(match[2]||match[3]){
-      const tex=match[2]||match[3],display=!!match[2];
+    if(match.index>cursor)appendText(text.slice(cursor,match.index));
+    const token=match.groups;
+    if(token.display||token.math){
+      const tex=token.display||token.math,display=!!token.display;
       const span=el('span',tex);span.className=display?'note-math display':'note-math';target.append(span);
       trackMath(katex.then(lib=>{if(lib&&span.isConnected)lib.render(tex,span,{throwOnError:false,trust:false,displayMode:display});}));
-    }else if(match[4]){const strong=el('strong');inline(strong,match[4]);target.append(strong);}
-    else if(match[5])target.append(el('mark',match[5]));
-    else if(legacyEquationTex(match[6])){
-      const matchValue=match[6],tex=legacyEquationTex(matchValue);const span=el('span',tex);span.className='note-math';target.append(span);
+    }else if(token.both){const strong=el('strong'),em=el('em');inline(em,token.both);strong.append(em);target.append(strong);}
+    else if(token.bold||token.italic){const node=el(token.bold?'strong':'em');inline(node,token.bold||token.italic);target.append(node);}
+    else if(token.highlight)target.append(el('mark',token.highlight));
+    else if(legacyEquationTex(token.code)){
+      const matchValue=token.code,tex=legacyEquationTex(matchValue);const span=el('span',tex);span.className='note-math';target.append(span);
       trackMath(katex.then(lib=>{if(lib&&span.isConnected){try{lib.render(tex,span,{throwOnError:true,trust:false,displayMode:false});}catch{span.replaceWith(el('code',matchValue));}}}));
-    }else target.append(el('code',match[6]));
+    }else target.append(el('code',token.code));
     cursor=tokens.lastIndex;
   }
-  if(cursor<text.length)target.append(document.createTextNode(text.slice(cursor)));
+  if(cursor<text.length)appendText(text.slice(cursor));
+}
+// Keep multiline display equations together before splitting Markdown into blocks.
+// Protect literal code, and leave unmatched delimiters untouched.
+function normalizeMath(markdown){
+  return markdown.replace(/(^```[^\n]*\n[\s\S]*?^```[^\n]*$)|(`[^`\n]+`)|(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([^\n]*?\\\))/gm,(value,fence,code)=>{
+    if(fence||code)return value;
+    if(value.startsWith('\\('))return '$'+value.slice(2,-2)+'$';
+    return '$$'+value.slice(2,-2).replace(/\s*\n\s*/g,' ')+'$$';
+  });
 }
 export function renderNoteMarkdown(target,markdown,{compactIntroduction=true,pageBreaks=true}={}){
-  target.replaceChildren();const lines=(compactIntroduction?compactNoteIntroduction(markdown):String(markdown||'')).replace(/\\\(/g,'$').replace(/\\\)/g,'$').replace(/\\\[/g,()=> '$$').replace(/\\\]/g,()=> '$$').replace(/\r\n?/g,'\n').split('\n');
+  target.replaceChildren();const lines=normalizeMath((compactIntroduction?compactNoteIntroduction(markdown):String(markdown||'')).replace(/\r\n?/g,'\n')).split('\n');
   let i=0;
   while(i<lines.length){
     const line=lines[i];if(!line.trim()){i++;continue}
@@ -35,11 +47,6 @@ export function renderNoteMarkdown(target,markdown,{compactIntroduction=true,pag
         const marker=el('div');marker.className='note-page-break';marker.setAttribute('role','separator');marker.setAttribute('aria-label','인쇄 쪽 나눔');marker.append(el('span','쪽 나눔'));target.append(marker);
       }
       i++;continue;
-    }
-    if(line.trim()==='$$'){
-      const tex=[];i++;while(i<lines.length&&lines[i].trim()!=='$$')tex.push(lines[i++]);if(i<lines.length)i++;
-      const block=el('div',tex.join('\n'));block.className='note-math display';target.append(block);
-      trackMath(katex.then(lib=>{if(lib)lib.render(tex.join('\n'),block,{throwOnError:false,trust:false,displayMode:true});}));continue;
     }
     if(/^```/.test(line)){
       const code=[];i++;
@@ -75,7 +82,7 @@ export function renderNoteMarkdown(target,markdown,{compactIntroduction=true,pag
     const paragraph=[];
     while(i<lines.length&&lines[i].trim()&&!/^(#{1,6}\s|```|<!--\s*pagebreak\s*-->|\$\$|>\s?|\s*([-*]|\d+\.)\s+)/.test(lines[i]))paragraph.push(lines[i++]);
     if(!paragraph.length){paragraph.push(lines[i++]);}
-    const p=el('p');paragraph.forEach((part,index)=>{if(index)p.append(el('br'));inline(p,part)});target.append(p);
+    const p=el('p');inline(p,paragraph.join('\n'));target.append(p);
   }
   if(!target.childNodes.length)target.append(el('p','정리본을 선택하거나 작성하면 여기에서 문서 형태로 미리 볼 수 있어요.'));
 }

@@ -8,6 +8,7 @@ const $=id=>document.getElementById(id);
 const state={courses:[],offerings:[],sources:[],notes:[],jobs:[],editingNote:null,activeOffering:null,busy:false,writesEnabled:false,noteRequest:null,drafts:new Map(),selectedIds:new Set(),pdfTask:null,showNotePreview:true};
 let drafts=createDraftStore(null),draftTimer;
 const pageNames={courses:'강의 관리',sources:'강의자료',gpt:'GPT 제작실',notes:'정리본',solvepad:'SolvePad 문제풀이',casio:'CASIO Studio'};
+let visiblePage=null;
 const setStatus=msg=>{$('status').textContent=msg;const side=$('sidebarStatus');if(side)side.textContent=msg;};
 const fail=msg=>{$('error').textContent=msg;$('error').hidden=false;};
 const clear=()=>{$('error').hidden=true;};
@@ -20,6 +21,8 @@ const usesOriginal=src=>src.processing_mode==='original';
 function pageFromLocation(){const page=location.hash.slice(1);return pageNames[page]?page:'courses';}
 function showPage(page,{push=false,focus=false}={}){
   const active=pageNames[page]?page:'courses';
+  if(visiblePage==='solvepad'&&active!=='solvepad')void pad.saveCurrent().catch(e=>fail('풀이 저장 실패: '+e.message));
+  visiblePage=active;
   for(const panel of document.querySelectorAll('[data-page-panel]'))panel.hidden=panel.dataset.pagePanel!==active;
   for(const button of document.querySelectorAll('[data-page-target]')){
     const selected=button.dataset.pageTarget===active;button.classList.toggle('active',selected);

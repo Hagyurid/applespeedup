@@ -1,6 +1,6 @@
 import {createDraftStore} from './local-drafts.js';
 import {renderNoteMarkdown,noteMathReady} from './note-render.js';
-/** Native course-owned SolvePad. The server stores each user's answer and ink. */
+/** Native course-owned SolvePad. Save results and ink together on navigation. */
 const $=id=>document.getElementById(id);
 const asText=value=>String(value??'');
 const answerText=q=>q.answer?.value??q.answer?.text??q.answer??'';
@@ -33,10 +33,17 @@ export function createSolvePad({call,json,notify,onError}){
   function status(text){$('solveSaveStatus').textContent=text;}
   function snapshot(){return {pack_id:s.packId,question_id:asText(key()),answer:s.answer,
     strokes:structuredClone(s.pages),result:s.result,bookmarked:s.bookmarked};}
+  function checkpoint(){
+    clearTimeout(s.timer);
+    if(!s.packId||!key()||!(s.dirty||s.stroke))return;
+    const data=snapshot();if(s.stroke)data.strokes[s.pageIndex].push(structuredClone(s.stroke));
+    drafts.write(draftKey(),{...data,base_revision:revisions.get(asText(key()))||0});
+  }
   function markDirty(){
     if(!s.writable||transitioning)return;
-    change++;s.dirty=true;drafts.write(draftKey(),{...snapshot(),base_revision:revisions.get(asText(key()))||0});status('저장 중…');
-    clearTimeout(s.timer);s.timer=setTimeout(()=>{void flush().catch(e=>onError('풀이 저장 실패: '+e.message));},650);
+    change++;s.dirty=true;status('문제·화면 이동 시 저장');
+    // Recovery copies stay on this device; drawing never sends a server request.
+    clearTimeout(s.timer);s.timer=setTimeout(checkpoint,1200);
   }
   async function flush(){
     clearTimeout(s.timer);
@@ -44,6 +51,7 @@ export function createSolvePad({call,json,notify,onError}){
     if(!s.dirty||!s.packId||!key()||!s.writable)return;
     if(conflicted)throw Error('최신 풀이를 먼저 불러오세요. 기기 초안은 보존됩니다.');
     const payload=snapshot(),version=change;
+    checkpoint();status('풀이 저장 중…');
     payload.expected_revision=revisions.get(payload.question_id)||0;
     const task=(async()=>{
       try{
@@ -177,7 +185,7 @@ export function createSolvePad({call,json,notify,onError}){
     renderResult();
     $('solveReveal').hidden=true;$('solveReveal').replaceChildren();
 
-    status(s.attempts.has(asText(q.id))?'사이트에 저장됨':'작성하면 자동 저장');
+    status(s.dirty?'문제·화면 이동 시 저장':s.attempts.has(asText(q.id))?'사이트에 저장됨':'문제·화면 이동 시 저장');
     renderList();redraw();
   }
   async function open(index){
@@ -260,12 +268,8 @@ export function createSolvePad({call,json,notify,onError}){
     s.pages=structuredClone(draft.strokes||[[]]);s.pageIndex=0;s.answer=asText(draft.answer);s.result=asText(draft.result);s.bookmarked=!!draft.bookmarked;
     markDirty();void renderQuestion();$('solveRestoreDraft').hidden=true;
   };
-  globalThis.window?.addEventListener('pagehide',()=>{
-    if(s.packId&&(s.dirty||s.stroke)){
-      const data=snapshot();if(s.stroke)data.strokes[s.pageIndex].push(structuredClone(s.stroke));
-      drafts.write(draftKey(),{...data,base_revision:revisions.get(asText(key()))||0});
-    }
-  });
+  globalThis.window?.addEventListener('pagehide',checkpoint);
+  globalThis.document?.addEventListener?.('visibilitychange',()=>{if(document.visibilityState==='hidden')checkpoint();});
   return {
     async load(id,record){
       return transition(async()=>{
@@ -287,6 +291,7 @@ export function createSolvePad({call,json,notify,onError}){
     });},
     setStorageUser(userId){drafts=createDraftStore(userId,onError);},
     setWritable(value){s.writable=!!value;updateWritable();redraw();},
+    saveCurrent(){return transition(async()=>{});},
     flush
   };
 }
