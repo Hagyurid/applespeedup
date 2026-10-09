@@ -13,7 +13,7 @@ description: 에쁠가속기 Sites 플러그인으로 과목별 PDF OCR·전사�
 
 ## PDF OCR 및 전사본 교정
 
-1. PDF는 `get_course_page_status`로 페이지 수와 준비된 이미지 번호를 확인한다. 이미지가 준비되지 않은 페이지는 OCR 완료라고 말하지 않는다.
+1. PDF는 `get_course_page_status`로 페이지 수, 준비된 이미지 번호, 저장된 검토 페이지와 미확인 페이지를 확인한다. 중단된 작업은 빠진 페이지부터 이어간다. 이미지가 준비되지 않은 페이지는 OCR 완료라고 말하지 않는다.
 2. PDF/PNG/JPG의 각 페이지는 `get_course_page_image`의 **실제 이미지 응답**을 보고 판독한다. PDF에서 추출한 문자 정보는 `get_course_original_text`의 해당 `page_num` 보조 자료로만 사용한다. `next_offset`이 있으면 같은 페이지를 이어서 읽는다. 손글씨, 수식, 표와 도표는 이미지를 우선 확인한다.
 3. 전사본은 `get_course_original_text`로 원문을 읽고 `next_offset`이 없어질 때까지 이어서 읽는다. 같은 과목의 첨부 슬라이드·교재를 우선 대조하고, 외부 지식으로 보완한 내용은 원문에 있던 사실처럼 쓰지 않는다.
 4. 페이지마다 `save_course_review_page`로 `raw_text`(판독·전사 원문), `corrected_text`(교정본), 같은 과목의 `evidence_ids`, 남은 의문 `unresolved`를 저장한다. 수치·단위·기호·수식이 모호하면 추측해서 확정하지 말고 `unresolved`에 남긴다.

@@ -119,8 +119,14 @@ export function createCourseLibrary(db,bucket){
   },
   async pageStatus(user,{material_id}={}){
    const m=await source(user,material_id);
-   const rows=await all("SELECT page_num FROM course_material_page_images WHERE material_id=? ORDER BY page_num",material_id);
-   return {material_id,page_count:m.page_count,prepared_pages:rows.map(x=>x.page_num),review_status:m.review_status};
+   const [images,reviews]=await Promise.all([
+    all("SELECT page_num FROM course_material_page_images WHERE material_id=? ORDER BY page_num",material_id),
+    all("SELECT page_num,unresolved_json FROM course_material_pages WHERE material_id=? ORDER BY page_num",material_id)
+   ]);
+   return {material_id,page_count:m.page_count,prepared_pages:images.map(x=>x.page_num),
+    reviewed_pages:reviews.filter(x=>!JSON.parse(x.unresolved_json||'[]').length).map(x=>x.page_num),
+    needs_review_pages:reviews.filter(x=>JSON.parse(x.unresolved_json||'[]').length).map(x=>x.page_num),
+    review_status:m.review_status};
   },
   async getPageImage(user,{material_id,page_num=1}={}){
    const m=await source(user,material_id);

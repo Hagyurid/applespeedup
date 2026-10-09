@@ -17,6 +17,7 @@ test('course-first registration needs no offering, year, professor or term',asyn
  await assert.rejects(()=>repo.listMaterials('bob',{course_id:'chem'}),/NOT_FOUND/);
  await assert.rejects(()=>repo.verifiedText('alice',{material_id:item.id}),/REVIEW_INCOMPLETE/);
  await repo.saveReview('alice',{material_id:item.id,page_num:1,raw_text:'삼 주차 속도론 시험',corrected_text:'3주차 반응속도론',unresolved:[]});
+ assert.deepEqual((await repo.pageStatus('alice',{material_id:item.id})).reviewed_pages,[1]);
  await repo.finalizeReview('alice',{material_id:item.id,page_count:1});
  const v=await repo.verifiedText('alice',{material_id:item.id});
  assert.equal(v.pages[0].corrected_text,'3주차 반응속도론');
