@@ -101,5 +101,25 @@ try{
     assert.equal(attempts.length,1);assert.equal(JSON.parse(attempts[0].data_json).strokes[0][0].points.length,2);
     assert.equal((await request('/api/v2/attempts?pack_id='+pack.id,{headers:bob})).status,404);
   });
+  await check('course MCP outline, progress, section autosave and version history survive the built Worker',async()=>{
+    const text=await (await request('/api/v2/text',{method:'POST',json:{course_id:c.id,title:'교정할 전사',source_type:'transcript',content:'원본'}})).json();
+    const invoke=async(name,args)=>{
+      const r=await request('/mcp',{method:'POST',headers:{...alice,accept:'application/json, text/event-stream'},json:{jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}}});
+      assert.equal(r.status,200);const result=(await r.json()).result;assert.equal(result.isError,false,JSON.stringify(result));return JSON.parse(result.content[0].text);
+    };
+    await invoke('save_course_review_page',{material_id:text.id,page_num:1,raw_text:'원본',corrected_text:'교정본'});
+    await invoke('finalize_course_review',{material_id:text.id,page_count:1});
+    const job=await invoke('start_course_generation',{course_id:c.id,mode:'detailed_note',source_ids:[text.id]});
+    const outline=await invoke('save_course_outline',{job_id:job.id,sections:[{title:'기초'},{title:'응용'}]});
+    assert.equal(outline.document_id,job.id);
+    const first=await invoke('save_course_part',{job_id:job.id,section_index:1,content_markdown:'검토한 첫 절'});
+    const progress=await invoke('get_course_generation_progress',{job_id:job.id});
+    assert.deepEqual(progress.saved_parts,[1]);assert.equal(progress.document_id,first.document_id);
+    const versions=await (await request('/api/v2/note-versions?id='+job.id)).json();
+    assert.equal(versions.length,2);
+    const previous=await (await request('/api/v2/note-version?id='+job.id+'&revision=1')).json();
+    assert.match(previous.content_markdown,/작성 중/);
+    assert.equal((await request('/api/v2/note-versions?id='+job.id,{headers:bob})).status,404);
+  });
   console.log(`Worker integration: ${checks} checks passed. Live login and browser interaction remain unverified.`);
 }finally{await mf.dispose();}

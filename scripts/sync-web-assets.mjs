@@ -1,7 +1,7 @@
 import { mkdirSync, copyFileSync } from 'node:fs';
 mkdirSync('public/web', { recursive: true });
 mkdirSync('public/domain', { recursive: true });
-for (const file of ['connected.js', 'connected.css', 'solvepad.js', 'solvepad.css', 'pdf-pages.js', 'styles.css']) copyFileSync(`web/${file}`, `public/web/${file}`);
+for (const file of ['connected.js', 'connected.css', 'solvepad.js', 'solvepad.css', 'pdf-pages.js', 'note-render.js', 'styles.css']) copyFileSync(`web/${file}`, `public/web/${file}`);
 copyFileSync('domain/core.mjs', 'public/domain/core.mjs');
 mkdirSync('public/vendor/pdfjs', { recursive: true });
 mkdirSync('public/vendor/katex', { recursive: true });

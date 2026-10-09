@@ -174,6 +174,16 @@ body{background:#f6f7f9}
 .picker-row:has(input:disabled){opacity:.58;cursor:not-allowed}
 .note-preview{border:1px solid #e8eaee;border-radius:12px;padding:20px;min-height:220px;max-height:70vh;overflow:auto;background:#fff;white-space:pre-wrap;line-height:1.8;font-size:.92rem;overflow-wrap:anywhere}
 .note-preview h1,.note-preview h2,.note-preview h3{margin:.7em 0 .35em;line-height:1.35}
+.note-preview p{margin:.65em 0}.note-preview ul,.note-preview ol{padding-left:1.5em;margin:.6em 0}
+.note-preview li{margin:.22em 0}.note-preview blockquote{border-left:3px solid #adc0d3;padding-left:1em;margin:1em 0;color:#43536b}
+.note-preview pre{overflow:auto;background:#f3f6fa;padding:12px;border-radius:8px;white-space:pre;font-size:.88rem}
+.note-preview code{background:#f3f6fa;border-radius:3px;padding:0 .18em}.note-preview mark{background:#fff1a6}
+.note-table-wrap{overflow-x:auto;max-width:100%}.note-preview table{border-collapse:collapse;width:100%;min-width:max-content}
+.note-preview th,.note-preview td{border:1px solid #d8dfe8;padding:8px 10px;text-align:left;white-space:normal;min-width:100px}
+.note-math.display{display:block;margin:1em 0;overflow-x:auto;max-width:100%}
+.note-history{display:flex;align-items:end;gap:10px;flex-wrap:wrap;margin:12px 0}
+.note-history .field{flex:1 1 210px;margin:0}.note-history button{min-height:42px}
+.job-card{grid-column:1/-1}.job-card .field{max-width:650px}
 .note-view-toolbar button{flex:1 1 auto}
 .connected-main #note-form[hidden],.connected-main #notePreview[hidden]{display:none!important}
 @media(max-width:1180px){.gpt-with-picker{grid-template-columns:1fr}.gpt-with-picker .prompt-card{grid-column:auto}}

@@ -156,6 +156,11 @@ export const courseDocuments=sqliteTable('course_documents',{
  content:text('content_markdown').notNull().default(''),revision:integer('revision').notNull().default(1),
  updatedAt:timestamp('updated_at')
 });
+export const courseDocumentVersions=sqliteTable('course_document_versions',{
+ documentId:text('document_id').notNull().references(()=>courseDocuments.id,{onDelete:'cascade'}),
+ revision:integer('revision').notNull(),title:text('title').notNull(),
+ content:text('content_markdown').notNull(),createdAt:timestamp('created_at')
+},t=>[primaryKey({columns:[t.documentId,t.revision]})]);
 export const courseProblemPacks=sqliteTable('course_problem_packs',{
  id:text('id').primaryKey(),courseId:text('course_id').notNull().references(()=>courses.id,{onDelete:'cascade'}),
  title:text('title').notNull(),packJson:text('pack_json').notNull(),createdAt:timestamp('created_at')
@@ -178,7 +183,8 @@ export const courseGenerationJobs=sqliteTable('course_generation_jobs',{
  sourceIdsJson:text('source_ids_json').notNull().default('[]'),
  outlineJson:text('outline_json').notNull().default('[]'),
  status:text('status').notNull().default('awaiting_outline'),
- documentId:text('document_id').references(()=>courseDocuments.id)
+ documentId:text('document_id').references(()=>courseDocuments.id),
+ documentRevision:integer('document_revision').notNull().default(0)
 });
 export const courseGenerationParts=sqliteTable('course_generation_parts',{
  jobId:text('job_id').notNull().references(()=>courseGenerationJobs.id,{onDelete:'cascade'}),

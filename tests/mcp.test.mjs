@@ -10,7 +10,16 @@ test('Course-only MCP discovery needs verified identity',async()=>{
  assert.deepEqual(result.result.tools.map(x=>x.name),toolSpecs().map(x=>x.name));
  assert.ok(result.result.tools.some(x=>x.name==='get_course_page_image'));
  assert.ok(result.result.tools.some(x=>x.name==='get_course_original_text'));
+ assert.ok(result.result.tools.some(x=>x.name==='get_course_generation_progress'));
+ assert.deepEqual(result.result.tools.find(x=>x.name==='save_course_outline').inputSchema.properties.sections.items.required,['title']);
  assert.ok(result.result.tools.every(x=>!['get_note','list_sources','get_source_page_image'].includes(x.name)));
+});
+test('Resumable course progress uses the verified caller and rejects unknown job tools',async()=>{
+ const repo={getJobProgress:async(user,{job_id})=>({user,job_id,status:'outlined',saved_parts:[]})};
+ const r=await handleMessage(msg('tools/call',{name:'get_course_generation_progress',arguments:{job_id:'j1'}}),{authenticate:async()=> 'alice',repo});
+ assert.deepEqual(JSON.parse(r.result.content[0].text),{user:'alice',job_id:'j1',status:'outlined',saved_parts:[]});
+ const legacy=await handleMessage(msg('tools/call',{name:'get_generation_progress',arguments:{run_id:'old'}}),{authenticate:async()=> 'alice',repo});
+ assert.equal(legacy.error.code,-32602);
 });
 test('Read-only MCP works while writes are locked; spoofed and malformed calls fail',async()=>{
  const repo={listMaterials:async(user,{course_id})=>[{user,course_id}]};

@@ -80,3 +80,65 @@ test('course API returns reviewed-only content and restricts unauthorised search
  assert.equal(results.status,200);
  assert.equal((await results.json())[0].source_title,'전사본');
 });
+test('course note versions preserve history, idempotent creation and scoped restoration',async()=>{
+ const {repo}=setup();
+ const request_id='550e8400-e29b-41d4-a716-446655440000';
+ const first=await repo.saveNote('alice',{course_id:'chem',title:'초안',content_markdown:'# 첫 판',request_id});
+ const retry=await repo.saveNote('alice',{course_id:'chem',title:'초안',content_markdown:'# 첫 판',request_id});
+ assert.equal(retry.id,first.id);assert.equal(retry.reused,true);
+ await assert.rejects(()=>repo.saveNote('alice',{course_id:'chem',title:'다른 글',content_markdown:'변경',request_id}),/REVISION_CONFLICT/);
+ const edit=await repo.saveNote('alice',{course_id:'chem',id:first.id,expected_revision:1,title:'수정',content_markdown:'# 둘째 판'});
+ assert.equal(edit.revision,2);
+ assert.deepEqual((await repo.listNoteVersions('alice',{id:first.id})).map(v=>v.revision),[2,1]);
+ assert.equal((await repo.getNoteVersion('alice',{id:first.id,revision:1})).content_markdown,'# 첫 판');
+ await assert.rejects(()=>repo.getNoteVersion('bob',{id:first.id,revision:1}),/NOT_FOUND/);
+ await assert.rejects(()=>repo.saveNote('alice',{course_id:'chem',id:first.id,expected_revision:1,title:'낡은 수정',content_markdown:'bad'}),/REVISION_CONFLICT/);
+});
+test('course generation resumes and cannot overwrite a manually edited note',async()=>{
+ const {repo}=setup();
+ const id=(await repo.registerText('alice',{course_id:'chem',title:'전사본',content:'원문'})).id;
+ await repo.saveReview('alice',{material_id:id,page_num:1,raw_text:'원문',corrected_text:'교정본'});
+ await repo.finalizeReview('alice',{material_id:id,page_count:1});
+ const {id:job}=await repo.startJob('alice',{course_id:'chem',mode:'detailed_note',source_ids:[id]});
+ const outlined=await repo.saveOutline('alice',{job_id:job,sections:[{title:'기초'},{title:'응용'}]});
+ assert.equal(outlined.document_id,job);
+ await assert.rejects(()=>repo.saveOutline('alice',{job_id:job,sections:[{title:'중복'}]}),/BAD_REQUEST|REVISION_CONFLICT/);
+ const a=await repo.savePart('alice',{job_id:job,section_index:1,content_markdown:'첫 절'});
+ assert.deepEqual((await repo.getJobProgress('alice',{job_id:job})).saved_parts,[1]);
+ assert.equal((await repo.listJobs('alice',{course_id:'chem'}))[0].id,job);
+ const own=await repo.getNote('alice',{id:a.document_id});
+ await repo.saveNote('alice',{course_id:'chem',id:own.id,expected_revision:own.revision,title:own.title,content_markdown:own.content_markdown+'\n직접 수정'});
+ await assert.rejects(()=>repo.savePart('alice',{job_id:job,section_index:2,content_markdown:'둘째 절'}),/REVISION_CONFLICT/);
+ assert.match((await repo.getNote('alice',{id:own.id})).content_markdown,/직접 수정/);
+ await assert.rejects(()=>repo.getJobProgress('bob',{job_id:job}),/NOT_FOUND/);
+});
+test('long transcript and verified text are paged without losing content',async()=>{
+ const {repo}=setup();const content='가'.repeat(18000)+'끝';
+ const id=(await repo.registerText('alice',{course_id:'chem',title:'긴 전사본',content})).id;
+ const first=await repo.getOriginalText('alice',{material_id:id});
+ const second=await repo.getOriginalText('alice',{material_id:id,offset:first.next_offset});
+ assert.equal(first.original_text+second.original_text,content);assert.equal(second.next_offset,null);
+ await repo.saveReview('alice',{material_id:id,page_num:1,raw_text:content,corrected_text:content});
+ await repo.finalizeReview('alice',{material_id:id,page_count:1});
+ const verified=await repo.verifiedText('alice',{material_id:id});
+ const rest=await repo.verifiedText('alice',{material_id:id,offset:verified.next_offset});
+ assert.equal(verified.pages[0].corrected_text+rest.pages[0].corrected_text,content);
+});
+test('parallel generated sections converge on one document and keep each revision',async()=>{
+ const {repo}=setup();
+ const id=(await repo.registerText('alice',{course_id:'chem',title:'자료',content:'원문'})).id;
+ await repo.saveReview('alice',{material_id:id,page_num:1,raw_text:'원문',corrected_text:'교정본'});
+ await repo.finalizeReview('alice',{material_id:id,page_count:1});
+ const job=(await repo.startJob('alice',{course_id:'chem',mode:'detailed_note',source_ids:[id]})).id;
+ await repo.saveOutline('alice',{job_id:job,sections:[{title:'A'},{title:'B'}]});
+ const results=await Promise.allSettled([
+  repo.savePart('alice',{job_id:job,section_index:1,content_markdown:'A 내용'}),
+  repo.savePart('alice',{job_id:job,section_index:2,content_markdown:'B 내용'})
+ ]);
+ assert.ok(results.every(x=>x.status==='fulfilled'),JSON.stringify(results.map(x=>x.status==='rejected'?String(x.reason):x.value)));
+ const progress=await repo.getJobProgress('alice',{job_id:job});
+ assert.equal(progress.status,'complete');assert.deepEqual(progress.saved_parts,[1,2]);
+ const note=await repo.getNote('alice',{id:progress.document_id});
+ assert.match(note.content_markdown,/A 내용/);assert.match(note.content_markdown,/B 내용/);
+ assert.equal((await repo.listNoteVersions('alice',{id:note.id})).length,note.revision);
+});

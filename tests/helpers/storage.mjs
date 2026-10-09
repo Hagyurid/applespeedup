@@ -1,13 +1,19 @@
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 export class D1TestDatabase {
-  constructor(){this.db=new DatabaseSync(':memory:');this.db.exec(readFileSync(new URL('../../sites/schema.sql',import.meta.url),'utf8'));}
+  constructor(){this.db=new DatabaseSync(':memory:');this.db.exec(readFileSync(new URL('../../sites/schema.sql',import.meta.url),'utf8'));this.batchQueue=Promise.resolve();}
   prepare(sql){return {bind:(...args)=>({
     first:async()=>this.db.prepare(sql).get(...args)||null,
     all:async()=>({results:this.db.prepare(sql).all(...args)}),
     run:async()=>({meta:{changes:Number(this.db.prepare(sql).run(...args).changes)}})
   })};}
-  async batch(items){this.db.exec('BEGIN');try{const out=[];for(const i of items)out.push(await i.run());this.db.exec('COMMIT');return out;}catch(e){this.db.exec('ROLLBACK');throw e;}}
+  async batch(items){
+    const task=this.batchQueue.then(async()=>{
+      this.db.exec('BEGIN');try{const out=[];for(const i of items)out.push(await i.run());this.db.exec('COMMIT');return out;}
+      catch(e){this.db.exec('ROLLBACK');throw e;}
+    });
+    this.batchQueue=task.catch(()=>{});return task;
+  }
 }
 export class R2TestBucket {
   constructor(){this.map=new Map();}

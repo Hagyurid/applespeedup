@@ -135,11 +135,16 @@ export function createCourseLibrary(db,bucket){
    let binary='';for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));
    return {__mcpImage:true,mimeType:page.mime_type,data:btoa(binary)};
   },
-  async getOriginalText(user,{material_id}={}){
+  async getOriginalText(user,{material_id,page_num=1,offset=0,limit=16000}={}){
    const m=await source(user,material_id);
-   const pages=m.mime_type==='application/pdf'
-     ? await all("SELECT page_num,extracted_text FROM course_material_page_images WHERE material_id=? ORDER BY page_num",material_id):[];
-   return {id:m.id,title:m.title,mime_type:m.mime_type,provenance:m.provenance,page_count:m.page_count,original_text:m.original_text,pages,review_status:m.review_status};
+   if(!Number.isInteger(page_num)||page_num<1||page_num>m.page_count||!Number.isInteger(offset)||offset<0||!Number.isInteger(limit)||limit<1||limit>40000)fail('BAD_REQUEST');
+   const page=m.mime_type==='application/pdf'
+     ?await one("SELECT extracted_text FROM course_material_page_images WHERE material_id=? AND page_num=?",material_id,page_num):null;
+   const original=m.mime_type==='application/pdf'?(page?.extracted_text||''):(m.original_text||'');
+   const chunk=original.slice(offset,offset+limit),next_offset=offset+chunk.length<original.length?offset+chunk.length:null;
+   return {id:m.id,title:m.title,mime_type:m.mime_type,provenance:m.provenance,page_count:m.page_count,
+    page_num,original_text:m.mime_type==='application/pdf'?null:chunk,
+    pages:m.mime_type==='application/pdf'?[{page_num,extracted_text:chunk}]:[],total_chars:original.length,next_offset,review_status:m.review_status};
   },
   async saveReview(user,{material_id,page_num,raw_text,corrected_text,evidence_ids=[],unresolved=[]}={}){
    const m=await source(user,material_id,true);
@@ -163,11 +168,14 @@ export function createCourseLibrary(db,bucket){
    await q("UPDATE course_materials SET review_status='reviewed',page_count=? WHERE id=?",page_count,material_id).run();
    return {id:material_id,review_status:'reviewed'};
   },
-  async verifiedText(user,{material_id}={}){
+  async verifiedText(user,{material_id,page_num=1,offset=0,limit=16000}={}){
    const m=await source(user,material_id);if(m.review_status!=='reviewed')fail('REVIEW_INCOMPLETE');
-   const pages=await all("SELECT page_num,corrected_text FROM course_material_pages WHERE material_id=? ORDER BY page_num",material_id);
-   if(pages.length!==m.page_count||!pages.length)fail('REVIEW_INCOMPLETE');
-   return {material_id,title:m.title,provenance:'corrected_ocr_or_transcript_only',pages};
+   if(!Number.isInteger(page_num)||page_num<1||page_num>m.page_count||!Number.isInteger(offset)||offset<0||!Number.isInteger(limit)||limit<1||limit>40000)fail('BAD_REQUEST');
+   const page=await one("SELECT corrected_text FROM course_material_pages WHERE material_id=? AND page_num=?",material_id,page_num);
+   if(!page)fail('REVIEW_INCOMPLETE');
+   const text=page.corrected_text,chunk=text.slice(offset,offset+limit);
+   return {material_id,title:m.title,provenance:'corrected_ocr_or_transcript_only',page_count:m.page_count,
+    pages:[{page_num,corrected_text:chunk}],total_chars:text.length,next_offset:offset+chunk.length<text.length?offset+chunk.length:null};
   },
   async search(user,{course_id,query}={}){
    await access(user,course_id);
@@ -176,14 +184,41 @@ export function createCourseLibrary(db,bucket){
   },
   async listNotes(user,{course_id}={}){await access(user,course_id);return all("SELECT id,title,type,revision,updated_at FROM course_documents WHERE course_id=? ORDER BY updated_at DESC",course_id)},
   async getNote(user,{id}={}){return note(user,id)},
-  async saveNote(user,{course_id,id,type='study_note',title,content_markdown='',expected_revision}={}){
+  async listNoteVersions(user,{id}={}){
+   await note(user,id);
+   return all("SELECT revision,title,created_at FROM course_document_versions WHERE document_id=? ORDER BY revision DESC LIMIT 100",id);
+  },
+  async getNoteVersion(user,{id,revision}={}){
+   await note(user,id);
+   if(!Number.isInteger(revision)||revision<1)fail('BAD_REQUEST');
+   const row=await one("SELECT revision,title,content_markdown,created_at FROM course_document_versions WHERE document_id=? AND revision=?",id,revision);
+   if(!row)fail('NOT_FOUND');return row;
+  },
+  async saveNote(user,{course_id,id,type='study_note',title,content_markdown='',expected_revision,request_id}={}){
    await access(user,course_id,true);
    if(!['study_note','exam_cram'].includes(type)||typeof content_markdown!=='string'||content_markdown.length>950000)fail('BAD_REQUEST');
    const t=clean(title,300);
-   if(!id){const newId=uid();await q("INSERT INTO course_documents(id,course_id,type,title,content_markdown) VALUES(?,?,?,?,?)",newId,course_id,type,t,content_markdown).run();return {id:newId,revision:1}}
+   if(!id){
+    if(request_id!==undefined&&(typeof request_id!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(request_id)))fail('BAD_REQUEST');
+    const newId=request_id||uid();
+    try{await db.batch([
+      q("INSERT INTO course_documents(id,course_id,type,title,content_markdown) VALUES(?,?,?,?,?)",newId,course_id,type,t,content_markdown),
+      q("INSERT INTO course_document_versions(document_id,revision,title,content_markdown) VALUES(?,1,?,?)",newId,t,content_markdown)
+    ]);}catch(e){
+      if(!request_id)throw e;
+      const existing=await one("SELECT course_id,type,title,content_markdown,revision FROM course_documents WHERE id=?",newId);
+      if(existing?.course_id===course_id&&existing.type===type&&existing.title===t&&existing.content_markdown===content_markdown&&existing.revision===1)return {id:newId,revision:1,reused:true};
+      fail('REVISION_CONFLICT');
+    }
+    return {id:newId,revision:1};
+   }
    const prev=await note(user,id,true);if(prev.course_id!==course_id)fail('FORBIDDEN');
    if(expected_revision!==prev.revision)fail('REVISION_CONFLICT');
-   const updated=await q("UPDATE course_documents SET title=?,content_markdown=?,revision=revision+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND revision=?",t,content_markdown,id,expected_revision).run();
+   let updated;
+   try{[updated]=await db.batch([
+      q("UPDATE course_documents SET title=?,content_markdown=?,revision=revision+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND revision=?",t,content_markdown,id,expected_revision),
+      q("INSERT INTO course_document_versions(document_id,revision,title,content_markdown) SELECT id,revision,title,content_markdown FROM course_documents WHERE id=? AND revision=?",id,expected_revision+1)
+   ]);}catch{fail('REVISION_CONFLICT')}
    if(updated.meta.changes!==1)fail('REVISION_CONFLICT');return {id,revision:prev.revision+1};
   },
   async listPacks(user,{course_id}={}){await access(user,course_id);return all("SELECT id,title,created_at FROM course_problem_packs WHERE course_id=? ORDER BY created_at DESC",course_id)},
@@ -216,26 +251,68 @@ export function createCourseLibrary(db,bucket){
   async saveOutline(user,{job_id,sections=[]}={}){
    const run=await job(user,job_id);
    if(run.status!=='awaiting_outline'||!Array.isArray(sections)||!sections.length||sections.length>80||sections.some(x=>!x||typeof x.title!=='string'||!x.title.trim()||x.title.length>200))fail('BAD_REQUEST');
-   await q("UPDATE course_generation_jobs SET status='outlined',outline_json=? WHERE id=? AND status='awaiting_outline'",JSON.stringify(sections.map((x,i)=>({index:i+1,title:x.title.trim()}))),job_id).run();
-   return {job_id,status:'outlined'};
+   const outline=sections.map((x,i)=>({index:i+1,title:x.title.trim()}));
+   const markdown=outline.map(x=>'## '+x.title+'\n\n[작성 중]').join('\n\n');
+   const [,updated]=await db.batch([
+    q("INSERT OR IGNORE INTO course_documents(id,course_id,type,title,content_markdown) SELECT id,course_id,'study_note',mode||' · '||scope,? FROM course_generation_jobs WHERE id=? AND status='awaiting_outline'",markdown,job_id),
+    q("UPDATE course_generation_jobs SET status='outlined',outline_json=?,document_id=id,document_revision=1 WHERE id=? AND status='awaiting_outline'",JSON.stringify(outline),job_id),
+    q("INSERT OR IGNORE INTO course_document_versions(document_id,revision,title,content_markdown) SELECT id,revision,title,content_markdown FROM course_documents WHERE id=?",job_id)
+   ]);
+   if(updated.meta.changes!==1)fail('REVISION_CONFLICT');
+   return {job_id,status:'outlined',document_id:job_id};
   },
   async savePart(user,{job_id,section_index,content_markdown}={}){
    const run=await job(user,job_id),outline=JSON.parse(run.outline_json||'[]');
    if(run.status==='awaiting_outline'||!outline.length)fail('OUTLINE_REQUIRED');
    if(!Number.isInteger(section_index)||section_index<1||section_index>outline.length)fail('BAD_REQUEST');
-   const body=clean(content_markdown,200000),prev=await one("SELECT content_markdown FROM course_generation_parts WHERE job_id=? AND section_index=?",job_id,section_index);
-   if(prev&&prev.content_markdown!==body)fail('REVISION_CONFLICT');
-   if(!prev)await q("INSERT INTO course_generation_parts(job_id,section_index,content_markdown) VALUES(?,?,?)",job_id,section_index,body).run();
-   const parts=await all("SELECT section_index,content_markdown FROM course_generation_parts WHERE job_id=? ORDER BY section_index",job_id);
-   const content=new Map(parts.map(p=>[p.section_index,p.content_markdown]));
-   const markdown=outline.map(p=>'## '+p.title+'\n\n'+(content.get(p.index)||'[작성 중]')).join('\n\n');
-   const doc=run.document_id||uid(),complete=parts.length===outline.length;
-   if(!run.document_id)await q("INSERT INTO course_documents(id,course_id,type,title,content_markdown) VALUES(?,?,?,?,?)",doc,run.course_id,'study_note',run.mode+' · '+run.scope,markdown).run();
-   else await q("UPDATE course_documents SET content_markdown=?,revision=revision+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND content_markdown<>?",markdown,doc,markdown).run();
-   await q("UPDATE course_generation_jobs SET document_id=?,status=? WHERE id=?",doc,complete?'complete':'generating',run.id).run();
-   return {document_id:doc,status:complete?'complete':'generating',saved_parts:parts.length,autosaved:true};
+   if(run.document_id){
+    const current=await one("SELECT revision FROM course_documents WHERE id=?",run.document_id);
+    if(!current||current.revision!==run.document_revision)fail('REVISION_CONFLICT');
+   }
+   const body=clean(content_markdown,200000);
+   await q("INSERT OR IGNORE INTO course_generation_parts(job_id,section_index,content_markdown) VALUES(?,?,?)",job_id,section_index,body).run();
+   const stored=await one("SELECT content_markdown FROM course_generation_parts WHERE job_id=? AND section_index=?",job_id,section_index);
+   if(stored?.content_markdown!==body)fail('REVISION_CONFLICT');
+   const doc=run.document_id||run.id;
+   // Older jobs can have an outline without a document. Reuse their stable job ID.
+   await q("INSERT OR IGNORE INTO course_documents(id,course_id,type,title,content_markdown) VALUES(?,?,?,?,?)",doc,run.course_id,'study_note',run.mode+' · '+run.scope,'').run();
+   if(!run.document_id)await db.batch([
+    q("UPDATE course_generation_jobs SET document_id=?,document_revision=1 WHERE id=? AND document_id IS NULL",doc,job_id),
+    q("INSERT OR IGNORE INTO course_document_versions(document_id,revision,title,content_markdown) SELECT id,revision,title,content_markdown FROM course_documents WHERE id=?",doc)
+   ]);
+   for(let retry=0;retry<5;retry++){
+    const parts=await all("SELECT section_index,content_markdown FROM course_generation_parts WHERE job_id=? ORDER BY section_index",job_id);
+    const content=new Map(parts.map(p=>[p.section_index,p.content_markdown]));
+    const markdown=outline.map(p=>'## '+p.title+'\n\n'+(content.get(p.index)||'[작성 중]')).join('\n\n');
+    const current=await one("SELECT revision,title,content_markdown FROM course_documents WHERE id=?",doc);
+    if(!current)fail('NOT_FOUND');
+    const fresh=await job(user,job_id);
+    if(current.revision!==fresh.document_revision){if(retry<4)continue;fail('REVISION_CONFLICT');}
+    if(current.content_markdown!==markdown){
+     const [updated,claimed]=await db.batch([
+      q("UPDATE course_documents SET content_markdown=?,revision=revision+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND revision=?",markdown,doc,current.revision),
+      q("UPDATE course_generation_jobs SET document_revision=document_revision+1 WHERE id=? AND document_revision=?",job_id,current.revision),
+      q("INSERT OR IGNORE INTO course_document_versions(document_id,revision,title,content_markdown) SELECT id,revision,title,content_markdown FROM course_documents WHERE id=? AND revision=?",doc,current.revision+1)
+     ]);
+     if(updated.meta.changes!==1||claimed.meta.changes!==1)continue;
+    }
+    await q("UPDATE course_generation_jobs SET document_id=?,status=CASE WHEN (SELECT count(*) FROM course_generation_parts WHERE job_id=?)=json_array_length(outline_json) THEN 'complete' ELSE 'generating' END WHERE id=?",doc,job_id,job_id).run();
+    const progress=await this.getJobProgress(user,{job_id});
+    return {document_id:doc,status:progress.status,saved_parts:progress.saved_parts.length,autosaved:true};
+   }
+   fail('REVISION_CONFLICT');
   },
-  async getJob(user,{id}={}){const j=await job(user,id);return {...j,source_ids:JSON.parse(j.source_ids_json),outline:JSON.parse(j.outline_json)}},
+  async listJobs(user,{course_id}={}){
+   await access(user,course_id);
+   return all("SELECT id,mode,scope,status,document_id FROM course_generation_jobs WHERE course_id=? AND user_id=? ORDER BY rowid DESC LIMIT 100",course_id,user);
+  },
+  async getJobProgress(user,{job_id}={}){
+   const j=await job(user,job_id);
+   const parts=await all("SELECT section_index FROM course_generation_parts WHERE job_id=? ORDER BY section_index",job_id);
+   return {job_id:j.id,course_id:j.course_id,mode:j.mode,scope:j.scope,status:j.status,document_id:j.document_id,
+    source_ids:JSON.parse(j.source_ids_json),outline:JSON.parse(j.outline_json),saved_parts:parts.map(x=>x.section_index)};
+  },
+  async getJob(user,{id}={}){return this.getJobProgress(user,{job_id:id})},
   async getFile(user,{id}={}){const s=await source(user,id);if(!s.storage_key||!bucket?.get)fail('NOT_FOUND');const file=await bucket.get(s.storage_key);if(!file)fail('NOT_FOUND');return new Response(file.body,{headers:{'content-type':s.mime_type,'content-disposition':"attachment; filename*=UTF-8''"+encodeURIComponent(s.original_filename),'cache-control':'no-store'}})}
  };
 }
@@ -245,12 +322,15 @@ export async function handleCourseRequest(request,{db,bucket,userId}){
  try{
    const get={'/api/v2/materials':['listMaterials',{course_id:url.searchParams.get('course_id'),type:url.searchParams.get('type')||'all'}],
      '/api/v2/search':['search',{course_id:url.searchParams.get('course_id'),query:url.searchParams.get('query')}],'/api/v2/notes':['listNotes',{course_id:url.searchParams.get('course_id')}],'/api/v2/note':['getNote',{id:url.searchParams.get('id')}],
+     '/api/v2/note-versions':['listNoteVersions',{id:url.searchParams.get('id')}],
+     '/api/v2/note-version':['getNoteVersion',{id:url.searchParams.get('id'),revision:Number(url.searchParams.get('revision'))}],
      '/api/v2/packs':['listPacks',{course_id:url.searchParams.get('course_id')}],'/api/v2/pack':['getPack',{id:url.searchParams.get('id')}],
      '/api/v2/attempt':['getAttempt',{pack_id:url.searchParams.get('pack_id'),question_id:url.searchParams.get('question_id')}],
      '/api/v2/attempts':['listAttempts',{pack_id:url.searchParams.get('pack_id')}],
      '/api/v2/page-status':['pageStatus',{material_id:url.searchParams.get('id')}],
      '/api/v2/casio':['listCasio',{course_id:url.searchParams.get('course_id')}],'/api/v2/casio-item':['getCasio',{id:url.searchParams.get('id')}],
      '/api/v2/reviewed':['verifiedText',{material_id:url.searchParams.get('id')}],'/api/v2/original':['getOriginalText',{material_id:url.searchParams.get('id')}],
+     '/api/v2/jobs':['listJobs',{course_id:url.searchParams.get('course_id')}],
      '/api/v2/job':['getJob',{id:url.searchParams.get('id')}]};
    if(method==='GET'&&get[p])return json(await repo[get[p][0]](userId,get[p][1]));
    if(method==='GET'&&p.startsWith('/api/v2/file/'))return repo.getFile(userId,{id:p.slice('/api/v2/file/'.length)});

@@ -134,6 +134,12 @@
               <div class="card-heading"><div><span class="step-number">03</span><h2>요청문 미리보기</h2></div><p>선택한 자료만 사용</p></div>
               <label class="field prompt-field"><span class="sr-only">요청문 미리보기</span><textarea id="prompt" rows="10" readonly></textarea></label>
             </section>
+            <section class="card workspace-card job-card">
+              <div class="card-heading"><div><span class="step-number">04</span><h2>작업 이어하기</h2></div><p>저장된 목차·작성 절 확인</p></div>
+              <label class="field">현재 과목의 GPT 작업<select id="jobSelect" aria-label="이어갈 GPT 작업"></select></label>
+              <div class="picker-actions"><button id="refreshJobs" type="button" class="ghost small">작업 목록 갱신</button><button id="copyResume" type="button" class="primary small">이어하기 요청문 복사</button></div>
+              <p id="jobProgress" class="hint" role="status">과목을 선택하면 저장된 작업을 확인할 수 있습니다.</p>
+            </section>
           </div>
         </section>
 
@@ -149,6 +155,7 @@
             <section class="card workspace-card note-editor-card">
               <div class="card-heading"><div><span class="step-number">02</span><h2>편집</h2></div><p>Markdown 원문 보존</p></div>
               <div class="note-view-toolbar"><button type="button" id="previewNote" class="ghost small">문서 보기</button><button type="button" id="editNote" class="ghost small">원문 편집</button><button type="button" id="noteHeading" class="ghost small">제목 삽입</button><button type="button" id="noteBold" class="ghost small">굵게</button><button type="button" id="printNote" class="ghost small">PDF 인쇄</button></div>
+              <div class="note-history"><label class="field">저장 버전<select id="noteVersion" aria-label="정리본 저장 버전"></select></label><button id="restoreNoteVersion" type="button" class="ghost small">선택 버전을 편집기로 가져오기</button></div>
               <article id="notePreview" class="note-preview" aria-label="정리본 문서 미리보기" tabindex="0"></article>
               <form id="note-form" class="panel-form">
                 <label class="field">정리본 제목<input id="noteTitle" required maxlength="300"></label>
