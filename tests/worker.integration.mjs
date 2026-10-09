@@ -33,7 +33,9 @@ try{
   });
   await check('signed-in HTML serves the retained workspace and external module',async()=>{
     const r=await request('/');assert.equal(r.status,200);const html=await r.text();assert.match(html,/강의 관리/);assert.match(html,/data-page-panel="sources"/);assert.match(html,/data-page-target="notes"/);assert.match(html,/id="note-form"/);assert.match(html,/\/web\/connected.js/);
-    const script=await request('/web/connected.js');assert.equal(script.status,200);assert.match(await script.text(),/\/api\/session/);
+    assert.match(html,/<meta[^>]*name="viewport"[^>]*content="[^"]*width=device-width/);
+    assert.match(html,/id="toggleWorkspace"/);assert.match(html,/id="solvePenOnly"/);
+    const script=await request('/web/connected.js?v=workspace-pen-1');assert.equal(script.status,200);assert.match(await script.text(),/\/api\/session/);
     assert.equal((await request('/domain/core.mjs')).status,200);
     assert.equal((await request('/favicon.svg')).status,200);
   });

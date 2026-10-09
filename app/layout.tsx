@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "../web/styles.css";
 import "../web/connected.css";
 import "../web/solvepad.css";
@@ -12,6 +12,7 @@ export const metadata: Metadata = {
     shortcut: "/favicon.svg",
   },
 };
+export const viewport: Viewport = {width:"device-width",initialScale:1,viewportFit:"cover"};
 
 export default function RootLayout({
   children,

@@ -66,6 +66,17 @@ test('many strokes stay local and save together once when moving to another prob
   const pad=createSolvePad({call:async(path,payload)=>{if(payload){if(failSave)throw Error('offline');writes.push(payload);return {revision:1}}return []},json:x=>structuredClone(x),notify(){},onError:e=>errors.push(e)});
   pad.setStorageUser('user');pad.setWritable(true);await pad.load('pack',{pack:{questions:[{id:'a'},{id:'b'}]}});
   const event={button:0,pointerId:1,clientX:20,clientY:30,preventDefault(){}};
+  node('solvePenOnly').onclick();assert.equal(node('solvePenOnly').attrs['aria-pressed'],'true');
+  for(const pointerType of ['touch','mouse']){node('solveInk').listeners.pointerdown({...event,pointerType});node('solveInk').listeners.pointerup({...event,pointerType})}
+  await pad.flush();assert.equal(writes.length,0);
+  node('solveInk').listeners.pointerdown({...event,pointerType:'pen'});
+  node('solveInk').listeners.pointerdown({...event,pointerId:2,pointerType:'touch'});
+  node('solveInk').listeners.pointerup({...event,pointerId:2,pointerType:'touch'});
+  node('solveInk').listeners.pointerup({...event,pointerType:'pen'});
+  await pad.flush();assert.equal(writes[0].strokes[0].length,1);writes.length=0;
+  // Start a fresh fixture after verifying the exclusive pen input.
+  await pad.load('pack',{pack:{questions:[{id:'a'},{id:'b'}]}});
+  node('solvePenOnly').onclick();assert.equal(node('solvePenOnly').attrs['aria-pressed'],'false');
   for(let i=0;i<20;i++){node('solveInk').listeners.pointerdown(event);node('solveInk').listeners.pointerup(event);t.mock.timers.tick(1300)}
   assert.equal(writes.length,0);assert.equal(JSON.parse([...storage.values()][0]).strokes[0].length,20);
   node('solveNext').onclick();await new Promise(resolve=>setImmediate(resolve));

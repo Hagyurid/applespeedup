@@ -33,7 +33,6 @@
 
     <div class="workspace-frame">
       <header class="workspace-topbar">
-        <button id="toggleWorkspace" class="ghost small layout-toggle" type="button" aria-expanded="true" aria-controls="workspaceSidebar">메뉴 접기</button>
         <div class="mobile-brand" aria-hidden="true"><div class="brand-mark">A<span>+</span></div></div>
         <div class="lecture-summary">
           <label for="globalCourse">현재 과목</label>
@@ -41,6 +40,11 @@
           <p id="lectureContext" class="lecture-context">과목을 선택하세요.</p>
         </div>
         <div class="topbar-status"><span class="tag" id="status" role="status">서버 연결 확인 중</span></div>
+        <div class="workspace-view-controls" role="group" aria-label="화면 공간 조절">
+          <button id="toggleWorkspace" class="ghost small layout-toggle" data-ui-only="true" type="button" aria-expanded="true" aria-controls="workspaceSidebar">메뉴 접기</button>
+          <button id="toggleNoteList" class="ghost small layout-toggle" data-ui-only="true" type="button" aria-expanded="true" aria-controls="noteListPanel" hidden>목록 접기</button>
+          <button id="toggleProblemList" class="ghost small layout-toggle" data-ui-only="true" type="button" aria-expanded="true" aria-controls="solveIndex" hidden>목록 접기</button>
+        </div>
       </header>
 
       <main class="connected-main workspace-main">
@@ -150,7 +154,6 @@
         <section id="page-notes" class="workspace-page" data-page-panel="notes" aria-labelledby="notes-title" hidden>
           <div class="page-head compact-page-head">
             <div><div class="eyebrow">STUDY NOTES</div><h1 id="notes-title">정리본</h1><p class="sub">저장된 정리본을 선택하고 충돌 없이 수정·저장하세요.</p></div>
-            <button id="toggleNoteList" class="ghost small layout-toggle" type="button" aria-expanded="true" aria-controls="noteListPanel">목록 접기</button>
           </div>
           <div class="page-grid notes-layout">
             <section id="noteListPanel" class="card workspace-card note-list-card">
@@ -171,7 +174,7 @@
           </div>
         </section>
         <section id="page-solvepad" class="workspace-page" data-page-panel="solvepad" aria-labelledby="solvepad-title" hidden>
-          <div class="page-head compact-page-head"><div><div class="eyebrow">PRACTICE</div><h1 id="solvepad-title">SolvePad 문제풀이</h1><p class="sub">정·오답을 기록하고 문제 이동 시 필기를 저장하세요.</p></div><button id="toggleProblemList" class="ghost small layout-toggle" type="button" aria-expanded="true" aria-controls="solveIndex">목록 접기</button></div>
+          <div class="page-head compact-page-head"><div><div class="eyebrow">PRACTICE</div><h1 id="solvepad-title">SolvePad 문제풀이</h1><p class="sub">정·오답을 기록하고 문제 이동 시 필기를 저장하세요.</p></div></div>
           <div class="tool-sync-bar">
             <label class="field">현재 과목의 문제팩<select id="packSelect" aria-label="문제팩 선택"></select></label>
             <button class="ghost small" id="refreshPacks" type="button">목록 새로고침</button>
@@ -198,7 +201,7 @@
                </div>
                <div class="solve-writing-panel">
               <div class="solve-paper-head"><strong>풀이 필기</strong><span id="solvePageLabel"></span></div>
-              <div class="solve-tools" role="toolbar" aria-label="필기 도구"><button id="solvePen" class="ghost small active" type="button" aria-pressed="true">펜</button><button id="solveErase" class="ghost small" type="button" aria-pressed="false">지우개</button><label>굵기 <input id="solveWidth" type="range" min="2" max="12" value="4"></label><button id="solveUndo" class="ghost small" type="button">되돌리기</button><button id="solveClear" class="ghost small" type="button">이 페이지 지우기</button></div>
+              <div class="solve-tools" role="toolbar" aria-label="필기 도구"><button id="solvePen" class="ghost small active" type="button" aria-pressed="true">펜</button><button id="solveErase" class="ghost small" type="button" aria-pressed="false">지우개</button><button id="solvePenOnly" class="ghost small" type="button" aria-pressed="false" title="브라우저가 펜으로 식별한 입력만 받습니다. 손가락과 마우스 입력은 차단됩니다.">펜만 입력</button><label>굵기 <input id="solveWidth" type="range" min="2" max="12" value="4"></label><button id="solveUndo" class="ghost small" type="button">되돌리기</button><button id="solveClear" class="ghost small" type="button">이 페이지 지우기</button></div>
               <canvas id="solveInk" class="solve-ink" aria-label="손가락 또는 펜으로 풀이를 적는 영역"></canvas>
               <div class="solve-page-actions"><button id="solvePrevPage" class="ghost small" type="button">이전 필기장</button><button id="solveNextPage" class="ghost small" type="button">다음 필기장</button><button id="solveAddPage" class="ghost small" type="button">필기장 추가</button></div>
               <div class="solve-nav"><button id="solvePrev" class="ghost" type="button">이전 문제</button><button id="solveNext" class="primary" type="button">다음 문제</button></div>
@@ -235,6 +238,6 @@
       <button type="button" class="mobile-nav-item" data-page-target="casio" aria-controls="page-casio"><span aria-hidden="true">∑</span><small>CASIO</small></button>
     </nav>
   </div>
-  <script type="module" src="connected.js"></script>
+  <script type="module" src="connected.js?v=workspace-pen-1"></script>
 </body>
 </html>

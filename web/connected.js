@@ -1,7 +1,8 @@
 import {bindSourceUpload} from './source-upload.js';
 import {createDraftStore} from './local-drafts.js';
 import {DEFAULT_PRESETS} from '../domain/core.mjs';
-import {createSolvePad} from './solvepad.js';
+import {createSolvePad} from './solvepad.js?v=pen-input-1';
+import {bindWorkspaceUI} from './workspace-ui.js';
 import {preparePdfPages} from './pdf-pages.js';
 import {renderNoteMarkdown,noteMathReady} from './note-render.js';
 const $=id=>document.getElementById(id);
@@ -9,6 +10,7 @@ const state={courses:[],offerings:[],sources:[],notes:[],jobs:[],editingNote:nul
 let drafts=createDraftStore(null),draftTimer;
 const pageNames={courses:'강의 관리',sources:'강의자료',gpt:'GPT 제작실',notes:'정리본',solvepad:'SolvePad 문제풀이',casio:'CASIO Studio'};
 let visiblePage=null;
+const workspaceUI=bindWorkspaceUI({document,window});
 const setStatus=msg=>{$('status').textContent=msg;const side=$('sidebarStatus');if(side)side.textContent=msg;};
 const fail=msg=>{$('error').textContent=msg;$('error').hidden=false;};
 const clear=()=>{$('error').hidden=true;};
@@ -23,7 +25,7 @@ function showPage(page,{push=false,focus=false}={}){
   const active=pageNames[page]?page:'courses';
   if(visiblePage==='solvepad'&&active!=='solvepad')void pad.saveCurrent().catch(e=>fail('풀이 저장 실패: '+e.message));
   visiblePage=active;
-  document.body.dataset.workspacePage=active;
+  workspaceUI.setPage(active);
   for(const panel of document.querySelectorAll('[data-page-panel]'))panel.hidden=panel.dataset.pagePanel!==active;
   for(const button of document.querySelectorAll('[data-page-target]')){
     const selected=button.dataset.pageTarget===active;button.classList.toggle('active',selected);
@@ -53,17 +55,6 @@ async function call(path,options={}){
 }
 const json=data=>({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
 const pad=createSolvePad({call,json,notify:setStatus,onError:fail});
-function bindCollapse(buttonId,targetId,container,collapsedClass,label){
- const button=$(buttonId),target=$(targetId);
- button.onclick=()=>{const collapsed=button.getAttribute('aria-expanded')==='true';
-  target.hidden=collapsed;container.classList.toggle(collapsedClass,collapsed);
-  button.setAttribute('aria-expanded',String(!collapsed));button.textContent=label+(collapsed?' 펼치기':' 접기');
- };
-}
-bindCollapse('toggleWorkspace','workspaceSidebar',document.querySelector('.workspace-shell'),'sidebar-collapsed','메뉴');
-bindCollapse('toggleNoteList','noteListPanel',document.querySelector('.notes-layout'),'list-collapsed','목록');
-bindCollapse('toggleProblemList','solveIndex',$('solveWorkspace'),'list-collapsed','목록');
-bindCollapse('toggleProblemView','solveQuestionPanel',$('solveSheet'),'question-collapsed','문제');
 const opt=(select,items,label)=>{select.replaceChildren();for(const x of items)select.add(new Option(label(x),x.id));};
 const empty=text=>{const li=document.createElement('li');li.textContent=text;return li;};
 const types={generated_note:'GPT 생성 자료',generated_pack:'GPT 생성 자료',generated_casio:'GPT 생성 자료',transcript:'전사본',lecture_slides:'강의자료',past_exam:'기출·시험자료',textbook:'교재·참고자료',exam_trend:'기출 경향',syllabus:'강의계획서',other:'기타'};
@@ -370,7 +361,7 @@ $('downloadCasio').onclick=()=>{
 };
 async function run(fn,success='저장된 자료를 확인했습니다.'){
   if(state.busy)return;state.busy=true;clear();setStatus('처리 중…');
-  const controls=[...document.querySelectorAll('button,input,select,textarea')].map(el=>[el,el.disabled]);controls.forEach(([el])=>el.disabled=true);
+  const controls=[...document.querySelectorAll('button:not([data-ui-only]),input,select,textarea')].map(el=>[el,el.disabled]);controls.forEach(([el])=>el.disabled=true);
   try{await fn();setStatus(success);}catch(e){fail(e.message);setStatus('확인이 필요합니다.');}
   finally{state.busy=false;controls.forEach(([el,disabled])=>{if(el.isConnected)el.disabled=disabled;});applyWriteLock();}
 }

@@ -23,7 +23,7 @@ async function renderPrompt(target,input){
 export function createSolvePad({call,json,notify,onError}){
   const canvas=$('solveInk'),ctx=canvas.getContext('2d');
   const s={packId:null,pack:null,questions:[],index:0,pageIndex:0,attempts:new Map(),
-    pages:[[]],answer:'',result:'',bookmarked:false,tool:'pen',stroke:null,pointer:null,
+    pages:[[]],answer:'',result:'',bookmarked:false,tool:'pen',penOnly:false,stroke:null,pointer:null,
     dirty:false,timer:null,saving:Promise.resolve(),writable:false,loadToken:0,hintIndex:0,revealMode:null};
   let drafts=createDraftStore(null),pending=null,transitioning=false,change=0,conflicted=false;
   let transitionDone=Promise.resolve();
@@ -64,7 +64,7 @@ export function createSolvePad({call,json,notify,onError}){
     })();
     pending=task;try{await task;}finally{pending=null;}
   }
-  const controls=['solveCorrect','solveWrong','solveUnmarked','solveBookmark','solvePen','solveErase','solveWidth','solveUndo','solveClear','solveAddPage','solveRestoreDraft'];
+  const controls=['solveCorrect','solveWrong','solveUnmarked','solveBookmark','solvePen','solveErase','solvePenOnly','solveWidth','solveUndo','solveClear','solveAddPage','solveRestoreDraft'];
   function updateWritable(){for(const id of controls)$(id).disabled=!s.writable||transitioning;}
   async function transition(fn){
     if(transitioning){await transitionDone;return transition(fn);}
@@ -123,7 +123,7 @@ export function createSolvePad({call,json,notify,onError}){
   }
   function erase(p){const before=page().length;s.pages[s.pageIndex]=page().filter(stroke=>!near(stroke,p));if(before!==page().length){redraw();markDirty()}}
   canvas.addEventListener('pointerdown',e=>{
-    if(!s.pack||!s.writable||transitioning||e.button!==0)return;
+    if(!s.pack||!s.writable||transitioning||e.button!==0||s.pointer!==null||(s.penOnly&&e.pointerType!=='pen'))return;
     e.preventDefault();canvas.setPointerCapture(e.pointerId);s.pointer=e.pointerId;
     const p=position(e);
     if(s.tool==='erase')erase(p);
@@ -209,6 +209,14 @@ export function createSolvePad({call,json,notify,onError}){
   $('solveQuestionSelect').onchange=e=>{if(e.target.value!=='')void open(Number(e.target.value)).catch(err=>onError(err.message));};
   $('solvePen').onclick=()=>setTool('pen');
   $('solveErase').onclick=()=>setTool('erase');
+  $('solvePenOnly').onclick=()=>{
+    if(!s.writable||transitioning)return;
+    if(s.stroke){page().push(s.stroke);s.stroke=null;markDirty();}
+    s.pointer=null;s.penOnly=!s.penOnly;
+    $('solvePenOnly').setAttribute('aria-pressed',String(s.penOnly));
+    $('solvePenOnly').classList.toggle('active',s.penOnly);
+    $('solvePenOnly').textContent=s.penOnly?'펜만 입력 · 켜짐':'펜만 입력';redraw();
+  };
   function setTool(name){
     s.tool=name;
     for(const [id,mode] of [['solvePen','pen'],['solveErase','erase']]){
