@@ -73,7 +73,7 @@ export function createCourseLibrary(db,bucket){
  async function reviewSummary(m){
   const [pages,images]=await Promise.all([
    all("SELECT page_num,evidence_json,unresolved_json FROM course_material_pages WHERE material_id=? ORDER BY page_num",m.id),
-   all("SELECT page_num,text_ready FROM course_material_page_images WHERE material_id=? ORDER BY page_num",m.id)
+   all("SELECT page_num,CASE WHEN text_ready=1 OR extracted_text<>'' THEN 1 ELSE 0 END AS text_ready FROM course_material_page_images WHERE material_id=? ORDER BY page_num",m.id)
   ]);
   const recorded=pages.filter(p=>p.page_num>=1&&p.page_num<=m.page_count);
   const concerns=recorded.filter(p=>JSON.parse(p.unresolved_json||'[]').length).map(p=>({material_id:m.id,title:m.title,page_num:p.page_num,
