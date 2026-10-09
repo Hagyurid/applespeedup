@@ -21,9 +21,9 @@ test('Source picker only adds reviewed items and sends explicit source ID list',
  assert.match(js,/const isReviewed=src=>src\.review_status==='reviewed'/);
  assert.match(js,/state\.selectedIds\.clear\(\)/);
  assert.match(js,/selectedSources\(\)\.filter\(isReviewed\)/);
- assert.match(js,/get_verified_source_text/);
- assert.match(js,/save_generation_outline/);
- assert.match(js,/save_generated_section/);
+ assert.match(js,/get_course_verified_text/);
+ assert.match(js,/save_course_outline/);
+ assert.match(js,/save_course_part/);
 });
 test('Review gate means completed OCR and transcript pages only are visible',async()=>{
  const db=new D1TestDatabase();const repo=createD1Repository(db),ai=createAiPipeline(db);

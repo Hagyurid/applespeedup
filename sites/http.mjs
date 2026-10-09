@@ -4,6 +4,7 @@
  */
 import {createD1Repository} from './repository.mjs';
 import {createAiPipeline} from './ai-pipeline.mjs';
+import {createCourseLibrary,handleCourseRequest} from './course-v2.mjs';
 import {handleMessage} from './mcp-core.mjs';
 import {storeAsset,downloadAsset,fileLimits} from './assets.mjs';
 const json=(body,status=200,extra={})=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...extra}});
@@ -21,7 +22,7 @@ const decode=(b)=>JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(b));
 function statusOf(err){if(['FORBIDDEN'].includes(err?.code))return 403;if(err?.code==='NOT_FOUND')return 404;if(err?.code==='REVISION_CONFLICT')return 409;if(err?.code==='REVIEW_INCOMPLETE'||err?.code==='OUTLINE_REQUIRED')return 422;if(['BAD_REQUEST','BAD_FILE'].includes(err?.code))return 400;return 500;}
 export function createHttpHandler({db,bucket,authenticate,allowedOrigin}={}){
   if(!db||typeof authenticate!=='function')throw Error('Verified authentication and a D1 binding are required');
-  const repo={...createD1Repository(db),...createAiPipeline(db,bucket)};
+  const repo={...createD1Repository(db),...createAiPipeline(db,bucket),...createCourseLibrary(db,bucket)};
   return async function handle(request){
     const url=new URL(request.url),method=request.method;
     if(url.pathname==='/health'&&method==='GET')return json({status:'ready',service:'aplus-accelerator',backend:'configured'});
@@ -35,6 +36,7 @@ export function createHttpHandler({db,bucket,authenticate,allowedOrigin}={}){
     if(!principal||typeof principal.id!=='string'||!principal.id.trim())return fail(401,'Authentication required');
     const userId=principal.id;
     try{
+      if(url.pathname.startsWith('/api/v2/'))return await handleCourseRequest(request,{db,bucket,userId});
       if(url.pathname==='/mcp'){
         if(method!=='POST')return fail(405,'Method not allowed');
         const accept=request.headers.get('accept')||'';

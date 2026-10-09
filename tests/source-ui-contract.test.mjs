@@ -8,7 +8,7 @@ test('source form separates user title from original filename',()=>{
   assert.match(html,/id="sourceTitle" required/);
   assert.match(html,/자료 제목 \(직접 입력\)/);
   assert.match(js,/name=\$\('sourceTitle'\)\.value\.trim\(\)/);
-  assert.match(js,/\('X-File-Name'\)|'X-File-Name'/);
+  assert.match(js,/\('X-Filename'\)|'X-Filename'/);
   assert.doesNotMatch(js,/sourceTitle'\)\.value\s*=\s*.*file\.name/);
 });
 test('past exam year is exclusive to ordinary source weeks',()=>{
@@ -18,6 +18,6 @@ test('past exam year is exclusive to ordinary source weeks',()=>{
   assert.match(js,/\$\('weeksField'\)\.hidden=exam/);
   assert.match(js,/\$\('examYearField'\)\.hidden=!exam/);
   assert.match(js,/const weeks=type==='past_exam'\?\[\]:sourceWeeks\(\)/);
-  assert.match(js,/X-Source-Weeks/);
+  assert.match(js,/X-Weeks/);
   assert.match(js,/X-Exam-Year/);
 });

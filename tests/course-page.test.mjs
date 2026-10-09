@@ -30,7 +30,7 @@ test('삭제한 교수·학년도 입력 폼을 더는 호출하지 않는다',(
   for(const old of ["$('offering-form')","$('fact-form')","$('factsList')","renderFacts()"]){
     assert.ok(!script.includes(old),'삭제한 UI 참조가 남음: '+old);
   }
-  assert.match(script,/if\(id&&!state\.offerings\.length&&state\.writesEnabled\)/);
-  assert.match(script,/call\('\/api\/offerings',json\(/);
+  assert.doesNotMatch(script,/createOffering|call\('\/api\/offerings'/);
+  assert.match(script,/call\(\x60\/api\/v2\/materials/);
   assert.match(script,/await refreshOfferingData\(\)/);
 });

@@ -127,3 +127,53 @@ export const sourcePageImages = sqliteTable('source_page_images', {
   mimeType: text('mime_type').notNull(),
   updatedAt: timestamp('updated_at'),
 }, t => [primaryKey({ columns: [t.sourceId, t.pageNum] })]);
+
+/* v0.9: course-first storage, no offering/professor/year partition in the data model. */
+export const courseMaterials = sqliteTable('course_materials', {
+ id: text('id').primaryKey(),courseId:text('course_id').notNull().references(()=>courses.id,{onDelete:'cascade'}),
+ title:text('title').notNull(),sourceType:text('source_type').notNull(),
+ weeksJson:text('weeks_json').notNull().default('[]'),examYear:integer('exam_year'),
+ originalFilename:text('original_filename').notNull().default(''),mimeType:text('mime_type').notNull().default(''),
+ storageKey:text('storage_key'),sha256:text('sha256'),originalText:text('original_text'),
+ reviewStatus:text('review_status').notNull().default('pending_review'),
+ pageCount:integer('page_count').notNull().default(0),createdAt:timestamp('created_at')
+},t=>[uniqueIndex('course_materials_dedupe').on(t.courseId,t.sourceType,t.sha256)]);
+export const courseMaterialPages=sqliteTable('course_material_pages',{
+ materialId:text('material_id').notNull().references(()=>courseMaterials.id,{onDelete:'cascade'}),
+ pageNum:integer('page_num').notNull(),rawText:text('raw_text').notNull(),correctedText:text('corrected_text').notNull(),
+ evidenceJson:text('evidence_json').notNull().default('[]'),unresolvedJson:text('unresolved_json').notNull().default('[]')
+},t=>[primaryKey({columns:[t.materialId,t.pageNum]})]);
+export const courseDocuments=sqliteTable('course_documents',{
+ id:text('id').primaryKey(),courseId:text('course_id').notNull().references(()=>courses.id,{onDelete:'cascade'}),
+ type:text('type').notNull().default('study_note'),title:text('title').notNull(),
+ content:text('content_markdown').notNull().default(''),revision:integer('revision').notNull().default(1),
+ updatedAt:timestamp('updated_at')
+});
+export const courseProblemPacks=sqliteTable('course_problem_packs',{
+ id:text('id').primaryKey(),courseId:text('course_id').notNull().references(()=>courses.id,{onDelete:'cascade'}),
+ title:text('title').notNull(),packJson:text('pack_json').notNull(),createdAt:timestamp('created_at')
+});
+export const courseAttempts=sqliteTable('course_attempts',{
+ userId:text('user_id').notNull().references(()=>users.id),
+ packId:text('pack_id').notNull().references(()=>courseProblemPacks.id,{onDelete:'cascade'}),
+ questionId:text('question_id').notNull(),dataJson:text('data_json').notNull(),updatedAt:timestamp('updated_at')
+},t=>[primaryKey({columns:[t.userId,t.packId,t.questionId]})]);
+export const courseCasioProjects=sqliteTable('course_casio_projects',{
+ id:text('id').primaryKey(),courseId:text('course_id').notNull().references(()=>courses.id,{onDelete:'cascade'}),
+ title:text('title').notNull(),blueprintJson:text('blueprint_json').notNull().default('{}'),
+ programText:text('program_text').notNull().default(''),manualText:text('manual_text').notNull().default(''),
+ updatedAt:timestamp('updated_at')
+});
+export const courseGenerationJobs=sqliteTable('course_generation_jobs',{
+ id:text('id').primaryKey(),courseId:text('course_id').notNull().references(()=>courses.id,{onDelete:'cascade'}),
+ userId:text('user_id').notNull().references(()=>users.id),
+ mode:text('mode').notNull(),scope:text('scope').notNull().default('전체'),
+ sourceIdsJson:text('source_ids_json').notNull().default('[]'),
+ outlineJson:text('outline_json').notNull().default('[]'),
+ status:text('status').notNull().default('awaiting_outline'),
+ documentId:text('document_id').references(()=>courseDocuments.id)
+});
+export const courseGenerationParts=sqliteTable('course_generation_parts',{
+ jobId:text('job_id').notNull().references(()=>courseGenerationJobs.id,{onDelete:'cascade'}),
+ sectionIndex:integer('section_index').notNull(),content:text('content_markdown').notNull()
+},t=>[primaryKey({columns:[t.jobId,t.sectionIndex]})]);
