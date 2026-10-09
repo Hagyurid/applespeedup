@@ -1,8 +1,24 @@
 ---
 name: aplus-study-workflow
-description: 에쁠가속기 과목·학년도 정보를 기준으로 자료 검색, 단원 매핑, 정리본, 시험형 문제, 전사본 교정, 작업 재개를 수행한다.
+description: 에쁠가속기 과목별 자료 OCR·전사본 검토, 목차 선저장, 자동 정리본 및 문제팩 저장을 수행한다.
 ---
 # 에쁠가속기 Study Workflow
+
+## v0.9 최우선 실행 규칙 (구형 offering·학년도 지침보다 우선)
+
+- **과목(course_id)**이 유일한 소유 범위. 필수 자료 분류는 과목과 유형; 일반 자료는 주차(0~N개), 기출은 연도(0~1개)만 선택한다. 교수·학년도·분반을 묻거나 구형 `offering_id`를 생성하지 않는다.
+- `list_course_materials`로 자료 목록을 확인한 후 사용자가 체크한 `material_id`만 처리한다. 필터/주차 일괄 선택은 선택의 편의 기능일 뿐 별도 자동 포함 조건이 아니다.
+- **GPT OCR**: PNG/JPG는 `get_course_page_image`로 모델에 실제 이미지가 전달된 경우에만 인쇄물·손글씨·수식·도표 인식을 수행한다. PDF는 실제 페이지 이미지 변환/전달 기능이 확인된 경우에만 OCR한다. 파일 제목이나 AI의 짐작을 본문 근거로 사용하지 않는다.
+- **GPT 전사본 검토**: `get_course_original_text`로 원문을 보고 같은 과목의 슬라이드/교재 및 공신력 있는 자료로 대조한다. 다르게 쓰인 수치·단위·수식은 원문과 출처를 나란히 기록한다. 불명확한 항목은 `unresolved`에 남기고 절대 임의 확정하지 않는다.
+- OCR·전사본의 페이지별 `raw_text`, `corrected_text`, `evidence_ids`, `unresolved`를 `save_course_review_page`에 저장. 모든 페이지를 검토한 뒤에만 `finalize_course_review`를 실행한다.
+- **생성에는 오직 `get_course_verified_text`를 사용**한다. `get_source_content`, 원본 PDF, OCR 원문은 새 과정의 생성 본문 근거로 사용하지 않는다. `REVIEW_INCOMPLETE`가 나면 생성을 중단하고 누락 페이지/근거/미확인 항목을 확인한다.
+- 항상 `start_course_generation` → **`save_course_outline`** (본문보다 먼저 DB에 목차 기록) → 각 섹션별 **`save_course_part`** (절마다 자동 저장) 순으로 실행한다. 사용자가 따로 목차 생성 또는 저장하라고 지시할 필요가 없다.
+- **출력물별 전용 저장**: 일반 정리본/시험 압축은 노트, 문제팩은 `save_course_problem_pack`로 `solvepad.problemPack.v5` 형식, CASIO는 `save_course_casio_project`로 설계 JSON/PRGM/TXT/매뉴얼을 저장한다. 전용 코드 생성기·채점 검증은 지원하는 도구가 실제 설치됐는지 확인한다.
+- GPT는 별도 모델 API 없이 **사용자가 연결된 ChatGPT 대화에서 작업을 시작한 경우에만** 실행한다. 사이트에 PDF를 올렸다는 사실만으로 ChatGPT가 백그라운드에서 실행된다고 주장하지 않는다.
+- 작업 완료 보고 전에 저장 도구 호출의 성공 결과와 실제 저장 ID를 확인한다. MCP를 설치하지 않았거나 `/mcp`가 닫혀 있으면 저장 완료라고 말하지 않는다.
+
+## 이전 버전 워크플로 기록 (현재 스키마 구현 시 우선 적용하지 않음)
+
 
 ## 본질적인 제약
 - OpenAI API를 직접 호출하지 않는다. 이 Skill은 ChatGPT 안에서 AI 작업 규칙을 제공한다.

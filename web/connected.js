@@ -96,6 +96,25 @@ function renderSources(){
     const loc=src.source_type==='past_exam'?(src.exam_year?`${src.exam_year}년`:'연도 미지정'):(src.weeks?.length?`${src.weeks.join(', ')}주차`:'주차 미지정');
     text.textContent=`${src.title} · ${types[src.source_type]||src.source_type} · ${loc} · ${src.extract_status==='ready'?'검색 가능':src.extract_status==='failed'?'추출 실패':'원문 추출 대기'}`;li.append(text);
     if(src.file_name){const b=document.createElement('button');b.type='button';b.className='ghost small';b.textContent='원본 다운로드';b.onclick=()=>{const a=document.createElement('a');a.href=`/api/v2/file/${encodeURIComponent(src.id)}`;a.click();};li.append(b);}
+    if(!isReviewed(src)){
+      const button=document.createElement('button');button.type='button';button.className='ghost small';
+      button.textContent='GPT 원문 검토 요청';
+      button.onclick=async()=>{
+        const c=course();if(!c)return fail('과목을 선택하세요.');
+        const msg=[
+          '@에쁠가속기 아래 자료를 검토해줘. 아직 생성 본문에는 사용하지 마.',
+          '과목: '+c.name+' (course_id='+c.id+')',
+          '자료 ID: '+src.id+' / 제목: '+src.title+' / 유형: '+src.source_type,
+          '원본은 읽기 전용. TXT/전사본은 get_course_original_text, PNG/JPG는 get_course_page_image로 실제 내용을 확인해.',
+          'PDF는 페이지 이미지 변환을 통해 전달받지 못했다면 손글씨 OCR을 했다고 주장하지 말고 대기 상태를 알려줘.',
+          '같은 과목의 강의자료와 공신력 있는 자료를 대조한 후 save_course_review_page로 원문/교정본/근거/불명확 항목을 기록해.',
+          '모든 페이지가 검증된 경우에만 finalize_course_review를 수행하고, 완료 전에는 본문 생성에 사용하지 마.'
+        ].join('\n');
+        try{await navigator.clipboard.writeText(msg);setStatus('OCR·전사본 검토 요청문을 복사했습니다. ChatGPT에 붙여넣어 실행하세요.');}
+        catch{fail('요청문 복사가 차단되었습니다. 브라우저 권한을 확인하세요.');}
+      };
+      li.append(button);
+    }
     node.append(li);
   }
 }
