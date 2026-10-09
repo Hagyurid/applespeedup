@@ -175,6 +175,16 @@ export function createCourseLibrary(db,bucket){
    let binary='';for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));
    return {__mcpImage:true,mimeType:page.mime_type,data:btoa(binary)};
   },
+  async getPageImages(user,{material_id,start_page=1,count=5}={}){
+   const m=await source(user,material_id);
+   if(!Number.isInteger(start_page)||start_page<1||!Number.isInteger(count)||count<1||count>8||start_page+count-1>m.page_count)fail('BAD_REQUEST');
+   const images=[];
+   for(let number=start_page;number<start_page+count;number++){
+    const image=await this.getPageImage(user,{material_id,page_num:number});
+    images.push({page_num:number,mimeType:image.mimeType,data:image.data});
+   }
+   return {__mcpImages:true,material_id,images};
+  },
   async getOriginalText(user,{material_id,page_num=1,offset=0,limit=16000}={}){
    const m=await source(user,material_id);
    if(!Number.isInteger(page_num)||page_num<1||page_num>m.page_count||!Number.isInteger(offset)||offset<0||!Number.isInteger(limit)||limit<1||limit>40000)fail('BAD_REQUEST');
