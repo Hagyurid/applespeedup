@@ -22,7 +22,7 @@ const decode=(b)=>JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(b));
 function statusOf(err){if(['FORBIDDEN'].includes(err?.code))return 403;if(err?.code==='NOT_FOUND')return 404;if(err?.code==='REVISION_CONFLICT')return 409;if(err?.code==='REVIEW_INCOMPLETE'||err?.code==='OUTLINE_REQUIRED')return 422;if(['BAD_REQUEST','BAD_FILE'].includes(err?.code))return 400;return 500;}
 export function createHttpHandler({db,bucket,authenticate,allowedOrigin}={}){
   if(!db||typeof authenticate!=='function')throw Error('Verified authentication and a D1 binding are required');
-  const repo={...createD1Repository(db),...createAiPipeline(db,bucket),...createCourseLibrary(db,bucket)};
+  const repo={...createCourseLibrary(db,bucket),...createD1Repository(db),...createAiPipeline(db,bucket)};
   return async function handle(request){
     const url=new URL(request.url),method=request.method;
     if(url.pathname==='/health'&&method==='GET')return json({status:'ready',service:'aplus-accelerator',backend:'configured'});

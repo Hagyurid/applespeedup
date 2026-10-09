@@ -186,3 +186,13 @@ body{background:#f6f7f9}
 }
 @media(max-width:520px){.global-course{width:min(195px,50vw);height:34px;font-size:.73rem}.mobile-nav-item{padding:6px 1px}.mobile-nav-item>span{font-size:1rem}.mobile-nav-item small{font-size:.52rem}.note-preview{padding:13px}}
 @media print{.workspace-sidebar,.workspace-topbar,.mobile-nav,.note-view-toolbar,.note-list-card,.account-footer,.global-messages,.panel-form,.workspace-page:not([data-page-panel="notes"]){display:none!important}.workspace-main.connected-main{padding:0}.note-preview{overflow:visible;max-height:none;border:0}}
+
+/* Course-owned SolvePad and CASIO project controls. */
+.tool-sync-bar{display:flex;align-items:end;flex-wrap:wrap;gap:12px;border:1px solid #e7e9ef;background:#fff;padding:14px;border-radius:14px;margin:12px 0}
+.tool-sync-bar .field{min-width:170px;flex:1 1 190px;margin:0}
+.tool-sync-bar button{flex:0 0 auto;min-height:43px}
+.legacy-tools{border:1px solid #e7e9ef;background:#fff;padding:12px;border-radius:14px;margin-top:16px}
+.legacy-tools summary{cursor:pointer;font-size:.84rem;font-weight:700;margin-bottom:6px}
+#casioForm{margin:0}
+#casioForm textarea{min-height:100px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre;overflow-x:auto}
+@media(max-width:700px){.tool-sync-bar{gap:8px;padding:11px}.tool-sync-bar .field{min-width:100%}.tool-sync-bar button{flex:1 1 40%}}

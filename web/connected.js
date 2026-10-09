@@ -153,8 +153,8 @@ function refreshPrompt(){
     '사용자가 체크하지 않은 자료는 본문 근거로 사용하지 마.',
     'PDF·이미지·전사본은 get_course_verified_text MCP 도구로 검토된 교정본만 읽어. 원본 PDF/미검토 텍스트를 본문 생성 근거로 사용하지 마.',
     '검토되지 않은 페이지가 있으면 먼저 원본과 같은 과목 자료를 교차 대조하고 미확인 내용은 확인 필요로 남겨.',
-    '반드시 목차를 먼저 만들고 save_generation_outline로 저장한 뒤에 본문을 작성해.',
-    '이후 각 절마다 save_generated_section을 호출해 정리본/버전을 자동 저장해. 별도 저장 지시를 요구하지 마.',
+    '반드시 목차를 먼저 만들고 save_course_outline로 저장한 뒤에 본문을 작성해.',
+    '이후 각 절마다 save_course_part를 호출해 정리본/버전을 자동 저장해. 별도 저장 지시를 요구하지 마.',
     '파일의 사용자 지정 제목, 주차, 기출 연도는 원본 이름/OCR에서 유추해 덮어쓰지 마.',
     ...preset.rules.map(x=>'· '+x)
   ].join('\n');
@@ -178,7 +178,7 @@ async function refreshOfferingData(){
     renderSources();renderNotes();refreshPrompt();$('searchResults').replaceChildren();$('searchQuery').value='';if(!id)$('lectureContext').textContent='과목을 선택하세요.';}
   if(id){const [sources,notes]=await Promise.all([call(`/api/v2/materials?course_id=${encodeURIComponent(id)}`),call(`/api/v2/notes?course_id=${encodeURIComponent(id)}`)]);state.sources=sources;state.notes=notes;}
   else{state.sources=[];state.notes=[];}
-  renderSources();renderNotes();renderPicker();refreshPrompt();
+  renderSources();renderNotes();renderPicker();refreshPrompt();await listRefreshed();
 }
 function renderNotePreview(){
   const node=$('notePreview');node.replaceChildren();
@@ -225,6 +225,58 @@ $('pickerSearch').oninput=renderPicker;$('pickerType').onchange=renderPicker;
 $('clearSelected').onclick=()=>{state.selectedIds.clear();renderPicker();refreshPrompt();};
 $('selectVisible').onclick=()=>{const type=$('pickerType').value,term=$('pickerSearch').value.trim().toLowerCase();for(const x of state.sources){if(isReviewed(x)&&(type==='all'||x.source_type===type)&&(!term||x.title.toLowerCase().includes(term)))state.selectedIds.add(x.id);}renderPicker();refreshPrompt();};
 renderNotePreview();
+const listRefreshed=async()=>{
+ const id=course()?.id;
+ if(!id){$('packSelect').replaceChildren();$('casioSelect').replaceChildren();return;}
+ const [packs,casio]=await Promise.all([call('/api/v2/packs?course_id='+encodeURIComponent(id)),call('/api/v2/casio?course_id='+encodeURIComponent(id))]);
+ opt($('packSelect'),packs,x=>x.title);opt($('casioSelect'),casio,x=>x.title);
+};
+$('refreshPacks').onclick=()=>run(listRefreshed,'문제팩 목록을 갱신했습니다.');
+$('refreshCasio').onclick=()=>run(listRefreshed,'프로젝트 목록을 갱신했습니다.');
+$('loadPack').onclick=()=>run(async()=>{
+ const id=$('packSelect').value;if(!id)throw Error('과목별 문제팩이 없습니다. GPT에서 문제팩을 저장하거나 JSON을 등록하세요.');
+ const record=await call('/api/v2/pack?id='+encodeURIComponent(id));
+ if(!course()||!record.pack?.questions?.length)throw Error('문제팩 내용이 올바르지 않습니다.');
+ const f=$('solvepadFrame');
+ const pack={...record.pack,packId:record.pack.packId||record.id,title:record.pack.title||record.title,subject:course().name};
+ const send=()=>f.contentWindow?.postMessage({type:'aplus-solvepad-load',pack_id:record.id,pack},location.origin);
+ if(!f.getAttribute('src')){f.addEventListener('load',()=>setTimeout(send,200),{once:true});f.src=f.dataset.lazySrc;}
+ else send();
+},'문제팩을 SolvePad에서 열었습니다.');
+$('packUpload').onchange=e=>run(async()=>{
+ const file=e.target.files?.[0];if(!file)return;
+ if(file.size>1024*1024)throw Error('문제팩 JSON 파일은 최대 1 MiB입니다.');
+ let pack;try{pack=JSON.parse(await file.text());}catch{throw Error('올바른 문제팩 JSON이 아닙니다.');}
+ if(!pack||!Array.isArray(pack.questions)||!pack.questions.length)throw Error('문제가 없는 파일입니다.');
+ await call('/api/v2/pack',json({course_id:course().id,title:pack.title||file.name,pack}));
+ await listRefreshed();e.target.value='';
+},'문제팩을 현재 과목에 저장했습니다.');
+window.addEventListener('message',event=>{
+ const f=$('solvepadFrame');
+ if(event.origin!==location.origin||event.source!==f.contentWindow||event.data?.type!=='aplus-solvepad-save')return;
+ const d=event.data;
+ if(!d.pack_id||!d.question_id||!course())return;
+ call('/api/v2/attempt',json({pack_id:d.pack_id,question_id:d.question_id,strokes:d.strokes||[],
+  answer:d.answer||'',result:d.result||'',bookmarked:!!d.bookmarked})).catch(e=>fail('풀이 기록 서버 저장 실패: '+e.message));
+});
+$('loadCasio').onclick=()=>run(async()=>{
+ const id=$('casioSelect').value;if(!id)throw Error('저장된 CASIO 프로젝트가 없습니다.');
+ const record=await call('/api/v2/casio-item?id='+encodeURIComponent(id));
+ $('casioForm').dataset.id=record.id;$('casioTitle').value=record.title;
+ $('casioBlueprint').value=record.blueprint_json;$('casioProgram').value=record.program_text;$('casioManual').value=record.manual_text;
+},'CASIO 프로젝트를 불러왔습니다.');
+$('casioForm').onsubmit=e=>{e.preventDefault();run(async()=>{
+ const c=course();if(!c)throw Error('과목을 선택하세요.');
+ const data={course_id:c.id,title:$('casioTitle').value,blueprint_json:$('casioBlueprint').value,
+  program_text:$('casioProgram').value,manual_text:$('casioManual').value};
+ if($('casioForm').dataset.id)data.id=$('casioForm').dataset.id;
+ const saved=await call('/api/v2/casio',json(data));$('casioForm').dataset.id=saved.id;await listRefreshed();
+},'CASIO 프로젝트를 과목에 저장했습니다.');};
+$('downloadCasio').onclick=()=>{
+ const text=$('casioProgram').value;if(!text.trim())return fail('다운로드할 PRGM 코드가 없습니다.');
+ const url=URL.createObjectURL(new Blob([text],{type:'text/plain;charset=utf-8'}));
+ const a=document.createElement('a');a.href=url;a.download=($('casioTitle').value||'CASIO')+'.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+};
 async function run(fn,success='저장된 자료를 확인했습니다.'){
   if(state.busy)return;state.busy=true;clear();setStatus('처리 중…');
   const controls=[...document.querySelectorAll('button,input,select,textarea')].map(el=>[el,el.disabled]);controls.forEach(([el])=>el.disabled=true);

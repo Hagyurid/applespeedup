@@ -153,9 +153,13 @@ el.canvas.addEventListener('pointerdown',e=>{markInkInteraction();clearNativeSel
 el.canvas.addEventListener('pointermove',e=>{markInkInteraction();if(!q())return;if(e.pointerType==='touch'){if(handleTouchGesture(e)||state.penOnly){e.preventDefault();return}}if(state.activePointerId!==null&&e.pointerId!==state.activePointerId)return;if(!pointerAllowed(e))return;e.preventDefault();for(const ev of eventPoints(e)){const p=pos(ev);if(state.tool==='eraser'&&e.buttons){eraseAt(p);continue}if(state.drawing)state.currentStroke.points.push(p)}if(state.drawing)scheduleDraw()});
 for(const type of ['pointerup','pointercancel','lostpointercapture'])el.canvas.addEventListener(type,e=>{markInkInteraction();clearNativeSelection(true);if(e.pointerType==='touch'){removeTouch(e);return}if(state.activePointerId===null||state.activePointerId===e.pointerId||type==='lostpointercapture')finishStroke()});
 function queueSave(){clearTimeout(saveTimer);saveTimer=setTimeout(saveStrokesNow,250)}
-async function saveStrokesNow(){const qu=q();if(!state.pack||!qu)return;clearTimeout(saveTimer);await put('strokes',{id:key(qu.id),packId:state.pack.packId,questionId:qu.id,pages:state.pages,updatedAt:new Date().toISOString()})}
+async function saveStrokesNow(){const qu=q();if(!state.pack||!qu)return;clearTimeout(saveTimer);await put('strokes',{id:key(qu.id),packId:state.pack.packId,questionId:qu.id,pages:state.pages,updatedAt:new Date().toISOString()});
+ if(state.packSource==='server'&&state.serverPackId&&window.parent!==window){const progress=await get('progress',key(qu.id));window.parent.postMessage({type:'aplus-solvepad-save',pack_id:state.serverPackId,question_id:qu.id,strokes:state.pages,result:progress?.status||'',bookmarked:progress?.bookmarked||false},location.origin);}
+}
 async function loadStrokes(){const qu=q();state.pages=[[]];state.pageIdx=0;if(!state.pack||!qu){renderPageBar();drawStrokes();return}const row=await get('strokes',key(qu.id));state.pages=row?.pages||[row?.strokes||[]];if(!Array.isArray(state.pages)||!state.pages.length)state.pages=[[]];renderPageBar();drawStrokes()}
-async function setProgress(patch){const qu=q(),p=state.pack;if(!qu||!p)return;const id=key(qu.id),cur=await get('progress',id)||{id,packSource:state.packSource||'local',packId:currentPackId(),serverPackId:state.serverPackId||'',questionId:qu.id};const meta={packSource:state.packSource||'local',packId:currentPackId(),serverPackId:state.serverPackId||'',questionId:qu.id,subject:packSubject(p),examSetId:p.examSetId||p.exam_set_id||p.metadata?.examSetId||'',examSetTitle:p.examSetTitle||p.exam_set_title||p.metadata?.examSetTitle||'',unitNumber:p.unitNumber||p.unit_number||'',unitTitle:p.unitTitle||p.unit_title||packUnit(p),packTitle:p.title||'',questionTitle:qu.title||qu.id};await put('progress',{...cur,...meta,...patch,updatedAt:new Date().toISOString()});await renderQList();await renderProgress()}
+async function setProgress(patch){const qu=q(),p=state.pack;if(!qu||!p)return;const id=key(qu.id),cur=await get('progress',id)||{id,packSource:state.packSource||'local',packId:currentPackId(),serverPackId:state.serverPackId||'',questionId:qu.id};const meta={packSource:state.packSource||'local',packId:currentPackId(),serverPackId:state.serverPackId||'',questionId:qu.id,subject:packSubject(p),examSetId:p.examSetId||p.exam_set_id||p.metadata?.examSetId||'',examSetTitle:p.examSetTitle||p.exam_set_title||p.metadata?.examSetTitle||'',unitNumber:p.unitNumber||p.unit_number||'',unitTitle:p.unitTitle||p.unit_title||packUnit(p),packTitle:p.title||'',questionTitle:qu.title||qu.id};await put('progress',{...cur,...meta,...patch,updatedAt:new Date().toISOString()});
+ if(state.packSource==='server'&&state.serverPackId&&window.parent!==window)window.parent.postMessage({type:'aplus-solvepad-save',pack_id:state.serverPackId,question_id:qu.id,strokes:state.pages,result:patch.status||cur.status||'',bookmarked:patch.bookmarked??cur.bookmarked??false},location.origin);
+ await renderQList();await renderProgress()}
 async function toggleBookmark(){const qu=q();if(!qu)return;const cur=await get('progress',key(qu.id));await setProgress({bookmarked:!cur?.bookmarked})}
 function prevPage(){state.pageIdx=Math.max(0,state.pageIdx-1);renderPageBar();drawStrokes()}
 function nextPage(){if(state.pageIdx>=state.pages.length-1)state.pages.push([]);state.pageIdx++;renderPageBar();drawStrokes();queueSave()}
@@ -242,3 +246,13 @@ function bindEvents(){/* legacy-null-safe-marker: if($('quickImport'))$('quickIm
   window.addEventListener('resize',resizeCanvas)
 }
 (async function init(){bindEvents();installIOSPencilGuard();await openDB();el.serverUrl.value=localStorage.getItem('solvepad_action_server_url')||location.origin;if(el.libraryServerUrl)el.libraryServerUrl.value=el.serverUrl.value;if(el.actionKey)el.actionKey.value=localStorage.getItem('lecturenote_action_key')||'';if(el.libraryActionKey)el.libraryActionKey.value=el.actionKey?el.actionKey.value:'';try{await handleImportToken()}catch(e){alert('importToken 오류: '+e.message)}state.penOnly=el.penOnly.checked;state.pageZoomLocked=localStorage.getItem('solvepad_page_zoom_locked')!=='0';applyPageZoomLock();await renderAll();await renderLibrary();resizeCanvas()})();
+
+window.addEventListener('message',async event=>{
+ if(event.origin!==location.origin||event.source!==window.parent||event.data?.type!=='aplus-solvepad-load')return;
+ const pack=event.data.pack;if(!pack||!Array.isArray(pack.questions)||!pack.questions.length)return;
+ try{
+  if(!db)await openDB();
+  state.pack=pack;state.idx=0;state.packSource='server';state.serverPackId=event.data.pack_id;
+  resetView();await loadStrokes();await renderAll();closeModals();
+ }catch(err){alert('에쁠가속기 문제팩 로딩 오류: '+err.message);}
+});

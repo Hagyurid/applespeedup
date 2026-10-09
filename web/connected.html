@@ -158,11 +158,32 @@
         </section>
         <section id="page-solvepad" class="workspace-page" data-page-panel="solvepad" aria-labelledby="solvepad-title" hidden>
           <div class="page-head"><div class="eyebrow">PRACTICE</div><h1 id="solvepad-title">SolvePad 문제풀이</h1><p class="sub">기존 필기·채점·오답 풀이 도구를 실행합니다. 문제팩 서버 연동은 별도 작업 중이므로 현재 로컬 풀이 기록과 구분해야 합니다.</p></div>
+          <div class="tool-sync-bar">
+            <label class="field">현재 과목의 문제팩<select id="packSelect" aria-label="문제팩 선택"></select></label>
+            <button class="ghost small" id="refreshPacks" type="button">목록 새로고침</button>
+            <button class="primary small" id="loadPack" type="button">문제풀이 시작</button>
+            <label class="field">문제팩 JSON 등록<input id="packUpload" type="file" accept=".json"></label>
+          </div>
           <iframe id="solvepadFrame" title="SolvePad 문제풀이" class="legacy-frame" data-lazy-src="/legacy/solvepad/index.html"></iframe>
         </section>
         <section id="page-casio" class="workspace-page" data-page-panel="casio" aria-labelledby="casio-title" hidden>
           <div class="page-head"><div class="eyebrow">PROGRAMS</div><h1 id="casio-title">CASIO Studio</h1><p class="sub">기존 CASIO 프로젝트 편집 화면을 실행합니다. 이전 Render 전용 검증·ZIP 서버 기능은 현재 연결되지 않습니다.</p></div>
-          <iframe id="casioFrame" title="CASIO 프로그램 편집" class="legacy-frame" data-lazy-src="/legacy/casio/index.html"></iframe>
+          <div class="tool-sync-bar">
+            <label class="field">저장된 CASIO 프로젝트<select id="casioSelect" aria-label="CASIO 프로젝트 선택"></select></label>
+            <button class="ghost small" id="refreshCasio" type="button">목록 갱신</button>
+            <button class="ghost small" id="loadCasio" type="button">불러오기</button>
+          </div>
+          <form id="casioForm" class="card workspace-card panel-form">
+            <label class="field">프로젝트 제목<input id="casioTitle" required maxlength="200" placeholder="예: 반응기 계산기"></label>
+            <label class="field">Blueprint (JSON)<textarea id="casioBlueprint" rows="5" spellcheck="false">{}</textarea></label>
+            <label class="field">PRGM 코드<textarea id="casioProgram" rows="8" spellcheck="false"></textarea></label>
+            <label class="field">사용 설명서<textarea id="casioManual" rows="4"></textarea></label>
+            <button class="primary action-button" type="submit">사이트에 CASIO 프로젝트 저장</button>
+            <button class="ghost" id="downloadCasio" type="button">PRGM 텍스트 다운로드</button>
+          </form>
+          <details class="legacy-tools"><summary>기존 CASIO Studio 도구 열기 (서버 전용 검증은 미연결)</summary>
+            <iframe id="casioFrame" title="기존 CASIO 프로그램 편집" class="legacy-frame" data-lazy-src="/legacy/casio/index.html"></iframe>
+          </details>
         </section>
       </main>
     </div>
