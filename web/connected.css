@@ -158,3 +158,31 @@ body{background:#f6f7f9}
 .connected-main .week-option{display:flex;align-items:center;gap:5px;font-size:.75rem;background:#f8f9fb;padding:8px 6px;border-radius:8px;cursor:pointer}
 .connected-main .week-option input{width:auto;min-width:15px;margin:0;accent-color:#e3454e}
 .connected-main #weeksField[hidden],.connected-main #examYearField[hidden]{display:none!important}
+
+/* 2026-10: global course, verified source picker, document reading and legacy tools */
+.global-course{display:block;width:min(260px,35vw);min-width:120px;height:36px;margin:2px 0 4px;border:1px solid #dfe3e9;border-radius:9px;background:#fff;color:#242731;padding:0 10px;font-size:.82rem;font-weight:700}
+.lecture-summary label{display:block;color:#8a8e98;font-size:.65rem}
+.gpt-with-picker{grid-template-columns:minmax(0,1.15fr) minmax(280px,1fr)}
+.gpt-with-picker .prompt-card{grid-column:1/-1}
+.source-picker-card{min-width:0}
+.picker-actions,.note-view-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 12px}
+.picker-list{overflow-y:auto;max-height:min(55vh,480px);min-width:0;display:grid;gap:10px}
+.picker-group{border:1px solid #e7e9ed;border-radius:11px;padding:10px;min-width:0}
+.picker-group-title{font-weight:750;font-size:.84rem;display:flex;align-items:center;gap:8px;padding-bottom:6px;cursor:pointer}
+.picker-row{display:flex;align-items:flex-start;gap:8px;padding:7px 0 7px 12px;line-height:1.5;font-size:.77rem;color:#434751;overflow-wrap:anywhere;cursor:pointer}
+.picker-row input,.picker-group-title input{accent-color:#d94450;flex:0 0 auto;margin-top:3px}
+.picker-row:has(input:disabled){opacity:.58;cursor:not-allowed}
+.note-preview{border:1px solid #e8eaee;border-radius:12px;padding:20px;min-height:220px;max-height:70vh;overflow:auto;background:#fff;white-space:pre-wrap;line-height:1.8;font-size:.92rem;overflow-wrap:anywhere}
+.note-preview h1,.note-preview h2,.note-preview h3{margin:.7em 0 .35em;line-height:1.35}
+.note-view-toolbar button{flex:1 1 auto}
+.connected-main #note-form[hidden],.connected-main #notePreview[hidden]{display:none!important}
+.legacy-frame{display:block;border:1px solid #e4e5e9;border-radius:12px;background:#fff;width:100%;height:calc(100dvh - 180px);min-height:490px}
+@media(max-width:1180px){.gpt-with-picker{grid-template-columns:1fr}.gpt-with-picker .prompt-card{grid-column:auto}}
+@media(max-width:860px){
+ .mobile-nav{grid-template-columns:repeat(6,minmax(0,1fr))}
+ .mobile-nav-item small{font-size:.56rem}
+ .global-course{width:min(270px,49vw)}
+ .legacy-frame{height:calc(100dvh - 220px);min-height:420px}
+}
+@media(max-width:520px){.global-course{width:min(195px,50vw);height:34px;font-size:.73rem}.mobile-nav-item{padding:6px 1px}.mobile-nav-item>span{font-size:1rem}.mobile-nav-item small{font-size:.52rem}.note-preview{padding:13px}}
+@media print{.workspace-sidebar,.workspace-topbar,.mobile-nav,.note-view-toolbar,.note-list-card,.account-footer,.global-messages,.panel-form,.workspace-page:not([data-page-panel="notes"]){display:none!important}.workspace-main.connected-main{padding:0}.note-preview{overflow:visible;max-height:none;border:0}}

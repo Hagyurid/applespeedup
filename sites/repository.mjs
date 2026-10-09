@@ -141,7 +141,10 @@ export function createD1Repository(db){
     async listSources(userId,{offering_id}){
       await authorizeOffering(userId,offering_id);
       const rows=await all(`SELECT id,offering_id,source_type,title,file_name,mime_type,extract_status,
-        provenance,year_reference AS exam_year,weeks_json,created_at FROM source_assets WHERE offering_id=?
+        provenance,year_reference AS exam_year,weeks_json,created_at,
+        CASE WHEN extract_status='ready' AND EXISTS (SELECT 1 FROM source_review_pages p WHERE p.source_id=source_assets.id)
+        AND NOT EXISTS (SELECT 1 FROM source_review_pages p WHERE p.source_id=source_assets.id AND p.review_status<>'reviewed')
+        THEN 'reviewed' ELSE 'pending_review' END AS review_status FROM source_assets WHERE offering_id=?
         ORDER BY created_at DESC,id DESC LIMIT 300`,offering_id);
       return rows.map(({weeks_json,...item})=>({...item,weeks:JSON.parse(weeks_json||'[]')}));
     },

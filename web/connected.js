@@ -1,12 +1,14 @@
 import {DEFAULT_PRESETS,makeRequest} from '../domain/core.mjs';
 const $=id=>document.getElementById(id);
-const state={courses:[],offerings:[],sources:[],notes:[],editingNote:null,activeOffering:null,busy:false,writesEnabled:false,noteRequest:null,drafts:new Map()};
-const pageNames={courses:'강의 관리',sources:'강의자료',gpt:'GPT 작업',notes:'정리본'};
+const state={courses:[],offerings:[],sources:[],notes:[],editingNote:null,activeOffering:null,busy:false,writesEnabled:false,noteRequest:null,drafts:new Map(),selectedIds:new Set(),legacyEditor:null,showNotePreview:true};
+const pageNames={courses:'강의 관리',sources:'강의자료',gpt:'GPT 제작실',notes:'정리본',solvepad:'SolvePad 문제풀이',casio:'CASIO Studio'};
 const setStatus=msg=>{$('status').textContent=msg;const side=$('sidebarStatus');if(side)side.textContent=msg;};
 const fail=msg=>{$('error').textContent=msg;$('error').hidden=false;};
 const clear=()=>{$('error').hidden=true;};
 const course=()=>state.courses.find(x=>x.id===$('course').value);
 const offering=()=>state.offerings.find(x=>x.id===$('offering').value);
+const selectedSources=()=>state.sources.filter(x=>state.selectedIds.has(x.id));
+const isReviewed=src=>src.review_status==='reviewed';
 function pageFromLocation(){const page=location.hash.slice(1);return pageNames[page]?page:'courses';}
 function showPage(page,{push=false,focus=false}={}){
   const active=pageNames[page]?page:'courses';
@@ -19,6 +21,7 @@ function showPage(page,{push=false,focus=false}={}){
   else if(!location.hash)history.replaceState({page:active},'',`#${active}`);
   document.title=`${pageNames[active]} | 에쁠가속기`;
   $('pageAnnouncement').textContent=`${pageNames[active]} 화면`;
+  const lazy=document.querySelector('[data-page-panel="'+active+'"] iframe[data-lazy-src]');if(lazy&&!lazy.src)lazy.src=lazy.dataset.lazySrc;
   window.scrollTo({top:0,behavior:'auto'});
   if(focus){const heading=document.querySelector(`[data-page-panel="${active}"] h1`);heading?.setAttribute('tabindex','-1');heading?.focus({preventScroll:true});}
 }
@@ -87,7 +90,7 @@ function restoreDraft(id){const d=state.drafts.get(id);$('noteTitle').value=d?.t
 function renderNoteSave(){$('noteSave').textContent=state.editingNote?`정리본 수정 저장 · v${state.editingNote.revision}`:'새 정리본 저장';}
 function renderSources(){
   const node=$('sourceList');node.replaceChildren();
-  if(!state.sources.length){node.append(empty('선택한 강의에 등록된 자료가 없습니다.'));return;}
+  if(!state.sources.length){node.append(empty('등록된 자료가 없습니다.'));return;}
   for(const src of state.sources){
     const li=document.createElement('li'),text=document.createElement('span');
     const loc=src.source_type==='past_exam'?(src.exam_year?`${src.exam_year}년`:'연도 미지정'):(src.weeks?.length?`${src.weeks.join(', ')}주차`:'주차 미지정');
@@ -100,18 +103,65 @@ function renderNotes(){const node=$('noteList');node.replaceChildren();if(!state
   for(const note of state.notes){const li=document.createElement('li'),b=document.createElement('button');b.type='button';b.className='ghost small';b.textContent=`${note.title} · v${note.revision}`;
     b.onclick=()=>run(async()=>{
       const n=await call(`/api/notes?note_id=${encodeURIComponent(note.id)}`);
-      if(n.offering_id!==state.activeOffering)throw Error('다른 학년도 강의의 정리본입니다.');
-      $('noteTitle').value=n.title;$('noteBody').value=n.content_markdown;state.editingNote={id:n.id,revision:n.revision,offeringId:n.offering_id};state.noteRequest=null;renderNoteSave();rememberDraft();
+      if(n.offering_id!==state.activeOffering)throw Error('다른 과목의 정리본입니다.');
+      $('noteTitle').value=n.title;$('noteBody').value=n.content_markdown;state.editingNote={id:n.id,revision:n.revision,offeringId:n.offering_id};state.noteRequest=null;renderNoteSave();renderNotePreview();rememberDraft();
     },'정리본을 불러왔습니다.');li.append(b);node.append(li);
   }
 }
-function refreshPrompt(){const c=course(),o=offering();if(!c||!o){$('prompt').value='과목을 등록하면 제작 요청을 준비할 수 있어요.';return;}
-  const src=state.sources.map(x=>({id:x.id,type:x.source_type,offeringId:x.offering_id,extractStatus:x.extract_status}));
-  $('prompt').value=makeRequest({course:c,offering:o,sources:src,mode:$('mode').value,scope:$('scope').value,preset:DEFAULT_PRESETS[$('mode').value]}).text;
+function renderPicker(){
+  const box=$('sourcePicker');box.replaceChildren();
+  const type=$('pickerType').value,search=$('pickerSearch').value.trim().toLowerCase();
+  const visible=state.sources.filter(s=>(type==='all'||s.source_type===type)&&(!search||s.title.toLowerCase().includes(search)));
+  $('selectedCount').textContent=state.selectedIds.size+'개 선택';
+  if(!visible.length){box.append(empty('이 과목에 해당하는 자료가 없습니다.'));return;}
+  const groups=new Map();
+  for(const item of visible){
+    const names=item.source_type==='past_exam'?[item.exam_year?item.exam_year+'년 기출':'기출 연도 미지정']:
+      (item.weeks?.length?item.weeks.map(x=>x+'주차'):['주차 미지정']);
+    for(const name of names){if(!groups.has(name))groups.set(name,[]);groups.get(name).push(item);}
+  }
+  for(const [name,items] of groups){
+    const group=document.createElement('div');group.className='picker-group';
+    const head=document.createElement('label');head.className='picker-group-title';
+    const checkbox=document.createElement('input');checkbox.type='checkbox';
+    const ready=items.filter(isReviewed);
+    checkbox.checked=ready.length>0&&ready.every(x=>state.selectedIds.has(x.id));
+    checkbox.indeterminate=ready.some(x=>state.selectedIds.has(x.id))&&!checkbox.checked;
+    checkbox.disabled=!ready.length;
+    checkbox.onchange=()=>{for(const s of ready){if(checkbox.checked)state.selectedIds.add(s.id);else state.selectedIds.delete(s.id);}renderPicker();refreshPrompt();};
+    head.append(checkbox,document.createTextNode(name+' · '+items.length+'개'));group.append(head);
+    for(const item of items){
+      const row=document.createElement('label');row.className='picker-row';
+      const check=document.createElement('input');check.type='checkbox';check.checked=state.selectedIds.has(item.id);
+      check.disabled=!isReviewed(item);check.onchange=()=>{if(check.checked)state.selectedIds.add(item.id);else state.selectedIds.delete(item.id);renderPicker();refreshPrompt();};
+      const title=document.createElement('span');title.textContent=item.title+' · '+(types[item.source_type]||item.source_type)+(isReviewed(item)?' · 교정 검토본':' · 검토 대기');
+      row.append(check,title);group.append(row);
+    }box.append(group);
+  }
+}
+function refreshPrompt(){
+  const c=course();if(!c){$('prompt').value='과목을 먼저 등록해 주세요.';return;}
+  const picked=selectedSources().filter(isReviewed);
+  const mode=$('mode').value,scope=$('scope').value;
+  const preset=DEFAULT_PRESETS[mode]||DEFAULT_PRESETS.detailed_note;
+  $('prompt').value=[
+    '@에쁠가속기 선택한 자료로 학습 결과물을 생성하고 사이트에 자동 저장해.',
+    '과목: '+c.name+' (course_id='+c.id+')',
+    '과목 특성: '+(c.characteristics||'미입력'),
+    '모드: '+mode+', 범위: '+scope,
+    '명시적으로 선택한 자료 ID ('+picked.length+'개): '+picked.map(x=>x.id).join(', '),
+    '사용자가 체크하지 않은 자료는 본문 근거로 사용하지 마.',
+    'PDF·이미지·전사본은 get_verified_source_text MCP 도구로 검토된 교정본만 읽어. 원본 PDF/미검토 텍스트를 본문 생성 근거로 사용하지 마.',
+    '검토되지 않은 페이지가 있으면 먼저 원본과 같은 과목 자료를 교차 대조하고 미확인 내용은 확인 필요로 남겨.',
+    '반드시 목차를 먼저 만들고 save_generation_outline로 저장한 뒤에 본문을 작성해.',
+    '이후 각 절마다 save_generated_section을 호출해 정리본/버전을 자동 저장해. 별도 저장 지시를 요구하지 마.',
+    '파일의 사용자 지정 제목, 주차, 기출 연도는 원본 이름/OCR에서 유추해 덮어쓰지 마.',
+    ...preset.rules.map(x=>'· '+x)
+  ].join('\n');
   $('lectureContext').textContent=c.name;
 }
-async function refreshCourses(selected=$('course').value){state.courses=await call('/api/courses');opt($('course'),state.courses,x=>x.name);
-  if(state.courses.some(x=>x.id===selected))$('course').value=selected;await refreshOfferings();}
+async function refreshCourses(selected=$('course').value){state.courses=await call('/api/courses');opt($('course'),state.courses,x=>x.name);opt($('globalCourse'),state.courses,x=>x.name);
+  if(state.courses.some(x=>x.id===selected))$('course').value=selected;$('globalCourse').value=$('course').value;await refreshOfferings();}
 // The UI is course-only. Keep a private offering ID because the existing D1
 // schema and MCP tools scope source/notes to an offering. Never create one for
 // another person's course unless the current session can write.
@@ -131,12 +181,57 @@ async function refreshOfferings(selected=$('offering').value){
 }
 async function refreshOfferingData(){
   const id=$('offering').value;
-  if(id!==state.activeOffering){rememberDraft();state.activeOffering=id;restoreDraft(id);state.sources=[];state.notes=[];
+  if(id!==state.activeOffering){rememberDraft();state.activeOffering=id;restoreDraft(id);state.sources=[];state.notes=[];state.selectedIds.clear();
     renderSources();renderNotes();refreshPrompt();$('searchResults').replaceChildren();$('searchQuery').value='';if(!id)$('lectureContext').textContent='과목을 선택하세요.';}
   if(id){const [sources,notes]=await Promise.all([call(`/api/sources?offering_id=${encodeURIComponent(id)}`),call(`/api/notes-list?offering_id=${encodeURIComponent(id)}`)]);state.sources=sources;state.notes=notes;}
   else{state.sources=[];state.notes=[];}
-  renderSources();renderNotes();refreshPrompt();
+  renderSources();renderNotes();renderPicker();refreshPrompt();
 }
+function renderNotePreview(){
+  const node=$('notePreview');node.replaceChildren();
+  const md=$('noteBody').value||'';
+  for(const raw of md.split(/\n{2,}/)){
+    const line=raw.trim();if(!line)continue;
+    const h=/^(#{1,6})\s+(.+)$/.exec(line);
+    const el=document.createElement(h?'h'+Math.min(h[1].length,4):'p');
+    el.textContent=h?h[2]:line;node.append(el);
+  }
+  if(!md.trim())node.append(empty('정리본을 선택하거나 작성하면 여기에서 문서 형태로 미리 볼 수 있어요.'));
+  node.hidden=!state.showNotePreview;
+  $('note-form').hidden=state.showNotePreview;
+}
+function sendToAdvancedEditor(){
+  const popup=window.open('/legacy/study/index.html','aplus_note_advanced');
+  if(!popup){fail('팝업 차단을 해제해 주세요.');return;}
+  state.legacyEditor=popup;
+  const deliver=()=>{try{popup.postMessage({type:'aplus-study-load',title:$('noteTitle').value,content:$('noteBody').value},location.origin);}catch{}};
+  popup.addEventListener('load',deliver,{once:true});
+  setTimeout(deliver,1200);
+}
+window.addEventListener('message',event=>{
+  if(event.origin!==location.origin||event.source!==state.legacyEditor||event.data?.type!=='aplus-study-save')return;
+  const data=event.data;if(typeof data.title!=='string'||typeof data.content!=='string'||data.content.length>950000)return;
+  $('noteTitle').value=data.title;$('noteBody').value=data.content;
+  run(async()=>{
+    const o=offering();if(!o)throw Error('과목 선택이 필요합니다.');
+    const body={offering_id:o.id,title:data.title,content_markdown:data.content};
+    if(state.editingNote){body.note_id=state.editingNote.id;body.expected_revision=state.editingNote.revision;}
+    else body.request_id=crypto.randomUUID();
+    const saved=await call('/api/notes',json(body));
+    state.editingNote={id:saved.id,revision:saved.revision,offeringId:o.id};
+    renderNoteSave();renderNotePreview();await refreshOfferingData();
+    state.legacyEditor?.postMessage({type:'aplus-study-saved',revision:saved.revision},location.origin);
+  },'고급 편집기에서 수정한 정리본을 저장했습니다.');
+});
+$('previewNote').onclick=()=>{state.showNotePreview=true;renderNotePreview();};
+$('editNote').onclick=()=>{state.showNotePreview=false;renderNotePreview();};
+$('openLegacyStudy').onclick=sendToAdvancedEditor;
+$('printNote').onclick=()=>{state.showNotePreview=true;renderNotePreview();window.print();};
+$('noteBody').addEventListener('input',()=>{if(state.showNotePreview)renderNotePreview();});
+$('pickerSearch').oninput=renderPicker;$('pickerType').onchange=renderPicker;
+$('clearSelected').onclick=()=>{state.selectedIds.clear();renderPicker();refreshPrompt();};
+$('selectVisible').onclick=()=>{const type=$('pickerType').value,term=$('pickerSearch').value.trim().toLowerCase();for(const x of state.sources){if(isReviewed(x)&&(type==='all'||x.source_type===type)&&(!term||x.title.toLowerCase().includes(term)))state.selectedIds.add(x.id);}renderPicker();refreshPrompt();};
+renderNotePreview();
 async function run(fn,success='저장된 자료를 확인했습니다.'){
   if(state.busy)return;state.busy=true;clear();setStatus('처리 중…');
   const controls=[...document.querySelectorAll('button,input,select,textarea')].map(el=>[el,el.disabled]);controls.forEach(([el])=>el.disabled=true);
@@ -144,7 +239,7 @@ async function run(fn,success='저장된 자료를 확인했습니다.'){
   finally{state.busy=false;controls.forEach(([el,disabled])=>{if(el.isConnected)el.disabled=disabled;});applyWriteLock();}
 }
 function applyWriteLock(){document.querySelectorAll('#course-form button,#source-form button,#note-form button,#noteNew').forEach(el=>el.disabled=!state.writesEnabled);}
-$('course').onchange=()=>run(refreshOfferings);$('offering').onchange=()=>run(refreshOfferingData);
+$('globalCourse').onchange=()=>run(async()=>{const target=$('globalCourse').value;$('course').value=target;state.selectedIds.clear();await refreshOfferings();});$('course').onchange=()=>run(async()=>{$('globalCourse').value=$('course').value;state.selectedIds.clear();await refreshOfferings();});$('offering').onchange=()=>run(refreshOfferingData);
 $('mode').onchange=refreshPrompt;$('scope').oninput=refreshPrompt;
 $('course-form').onsubmit=e=>{e.preventDefault();run(async()=>{const r=await call('/api/courses',json({name:$('courseName').value,characteristics:$('characteristics').value}));$('course-form').reset();await refreshCourses(r.id);});};
 $('source-form').onsubmit=e=>{e.preventDefault();run(async()=>{
@@ -181,7 +276,7 @@ $('note-form').onsubmit=e=>{e.preventDefault();run(async()=>{
   else{const fingerprint=JSON.stringify(body);if(state.noteRequest?.fingerprint!==fingerprint)state.noteRequest={fingerprint,id:crypto.randomUUID()};body.request_id=state.noteRequest.id;}
   const saved=await call('/api/notes',json(body));state.editingNote={id:saved.id,revision:saved.revision,offeringId:o.id};state.noteRequest=null;renderNoteSave();rememberDraft();await refreshOfferingData();
 },'정리본을 저장했습니다.');};
-$('copyPrompt').onclick=()=>run(async()=>{if(!offering())throw Error('강의를 선택하세요.');await navigator.clipboard.writeText($('prompt').value);},'GPT 요청문을 복사했습니다.');
+$('copyPrompt').onclick=()=>run(async()=>{if(!offering())throw Error('과목을 선택하세요.');if(!state.selectedIds.size)throw Error('사용할 자료를 1개 이상 선택하세요.');if(selectedSources().some(x=>!isReviewed(x)))throw Error('검토 전 자료를 사용할 수 없습니다.');await navigator.clipboard.writeText($('prompt').value);},'선택 자료와 교정본 우선 원칙을 포함한 GPT 요청문을 복사했습니다.');
 run(async()=>{const user=await call('/api/session');$('accountName').textContent=user.display_name;state.writesEnabled=user.mutations_enabled===true;$('readOnlyNotice').hidden=state.writesEnabled;await refreshCourses();});
 
 // Browser tools use the visible, authenticated workspace. This is separate from the Site MCP plugin.

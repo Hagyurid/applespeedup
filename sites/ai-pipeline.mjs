@@ -202,6 +202,14 @@ export function createAiPipeline(db,bucket=null){
       const rows=await all('SELECT section_index FROM ai_generation_sections WHERE run_id=? ORDER BY section_index',run_id);
       return {run_id,status:run.status,outline:parse(run.outline_json),saved_sections:rows.map(x=>x.section_index),note_id:run.note_id,source_ids:parse(run.source_ids_json)};
     },
+    async getVerifiedSourceText(user,{source_id,page_num}={}){
+      const src=await source(user,source_id);
+      if(src.extract_status!=='ready')reject('REVIEW_INCOMPLETE');
+      if(page_num!==undefined&&(!Number.isInteger(page_num)||page_num<1||page_num>1000))reject('BAD_REQUEST');
+      const pages=await all('SELECT page_num,corrected_text,unresolved_json,review_status FROM source_review_pages WHERE source_id=? AND (? IS NULL OR page_num=?) ORDER BY page_num',source_id,page_num??null,page_num??null);
+      if(!pages.length||pages.some(p=>p.review_status!=='reviewed'||JSON.parse(p.unresolved_json||'[]').length))reject('REVIEW_INCOMPLETE');
+      return {source_id,title:src.title,verified:'gpt_reviewed',text_origin:'corrected_text',pages:pages.map(p=>({page_num:p.page_num,content:p.corrected_text}))};
+    },
     async getReviewedPage(user,{source_id,page_num}={}){
       await source(user,source_id);
       if(!Number.isInteger(page_num)||page_num<1)reject('BAD_REQUEST');

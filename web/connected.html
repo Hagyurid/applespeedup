@@ -20,6 +20,8 @@
         <button type="button" class="workspace-nav-item" data-page-target="sources" aria-controls="page-sources"><span class="nav-icon" aria-hidden="true">▤</span><span>자료</span></button>
         <button type="button" class="workspace-nav-item" data-page-target="gpt" aria-controls="page-gpt"><span class="nav-icon" aria-hidden="true">✦</span><span>GPT 작업</span></button>
         <button type="button" class="workspace-nav-item" data-page-target="notes" aria-controls="page-notes"><span class="nav-icon" aria-hidden="true">▥</span><span>정리본</span></button>
+        <button type="button" class="workspace-nav-item" data-page-target="solvepad" aria-controls="page-solvepad"><span class="nav-icon" aria-hidden="true">✎</span><span>문제풀이</span></button>
+        <button type="button" class="workspace-nav-item" data-page-target="casio" aria-controls="page-casio"><span class="nav-icon" aria-hidden="true">∑</span><span>CASIO</span></button>
       </nav>
       <div class="sidebar-status">
         <span class="status-dot" aria-hidden="true"></span>
@@ -31,8 +33,9 @@
       <header class="workspace-topbar">
         <div class="mobile-brand" aria-hidden="true"><div class="brand-mark">A<span>+</span></div></div>
         <div class="lecture-summary">
-          <span>현재 강의</span>
-          <p id="lectureContext" class="lecture-context">강의를 선택하세요.</p>
+          <label for="globalCourse">현재 과목</label>
+          <select id="globalCourse" class="global-course" aria-label="모든 화면의 과목 선택"></select>
+          <p id="lectureContext" class="lecture-context">과목을 선택하세요.</p>
         </div>
         <div class="topbar-status"><span class="tag" id="status" role="status">서버 연결 확인 중</span></div>
       </header>
@@ -83,7 +86,7 @@
                 <label class="field" id="examYearField" hidden>기출 연도 (선택)<input id="examYear" type="number" min="1900" max="2100" placeholder="예: 2024"></label>
                 <label class="field">전사본 입력<textarea id="transcript" rows="6" placeholder="녹음 파일이 아닌 전사된 텍스트를 붙여넣으세요."></textarea></label>
                 <label class="field file-field">원본 파일 (TXT·MD·PDF·DOCX·PPTX·PNG·JPG)<input id="sourceFile" type="file" accept=".txt,.md,.pdf,.docx,.pptx,.png,.jpg,.jpeg"></label>
-                <label class="field">출처·참고 연도<input id="provenance" maxlength="400" placeholder="2025 기출, 수업 자료 등"></label>
+                <label class="field">출처 설명 (선택)<input id="provenance" maxlength="400" placeholder="예: 강의 PPT, 교재 스캔본"></label>
                 <button class="primary action-button" type="submit">자료 저장</button>
               </form>
               <p class="hint">TXT·MD는 등록 즉시 검색할 수 있습니다. PNG·JPG는 AI 분석을 위해 페이지 이미지를 준비합니다. PDF·DOCX·PPTX는 현재 원본만 저장하며, ChatGPT 이미지 전달을 위한 페이지 변환 기능은 추가 개발 중입니다.</p>
@@ -108,18 +111,26 @@
           <div class="page-head compact-page-head">
             <div><div class="eyebrow">GPT WORKSPACE</div><h1 id="gpt-title">GPT 작업</h1><p class="sub">사이트의 강의 맥락을 담은 요청문을 준비해 ChatGPT에서 실행하세요.</p></div>
           </div>
-          <div class="page-grid gpt-layout">
+          <div class="page-grid gpt-layout gpt-with-picker">
             <section class="card workspace-card">
               <div class="card-heading"><div><span class="step-number">01</span><h2>작업 설정</h2></div><p>AI는 ChatGPT에서 실행</p></div>
               <label class="field">제작 모드<select id="mode"><option value="detailed_note">상세 정리본</option><option value="outline">목차·단원 매핑</option><option value="subnote">서브노트</option><option value="exam_paper">시험형 문제집</option><option value="exam_cram">시험 직전 압축</option><option value="exam_trends">기출 경향 분석</option><option value="transcript_fix">전사본 교정</option><option value="errors">오답노트</option><option value="calculator">CASIO 코드 설계</option></select></label>
               <label class="field">범위<input id="scope" value="5주차" maxlength="200"></label>
               <button class="primary action-button" id="copyPrompt" type="button">GPT 작업 요청문 복사</button>
-              <p class="hint">웹사이트는 별도 모델 API를 호출하지 않습니다. 요청문을 복사해 ChatGPT에서 사용하세요.</p>
+              <p class="hint">GPT 제작은 ChatGPT와의 연결이 필요해요. PDF는 검토 완료한 OCR/교정본만 사용할 수 있어요.</p>
             </section>
 
+            <section class="card workspace-card source-picker-card" aria-labelledby="picker-title">
+              <div class="card-heading"><div><span class="step-number">02</span><h2 id="picker-title">참고 자료 선택</h2></div><span id="selectedCount">0개 선택</span></div>
+              <label class="field">자료 검색<input id="pickerSearch" placeholder="파일 제목 검색" maxlength="180"></label>
+              <label class="field">유형<select id="pickerType"><option value="all">모든 자료</option><option value="lecture_slides">강의자료</option><option value="transcript">전사본</option><option value="textbook">교재·참고</option><option value="past_exam">기출</option><option value="other">기타</option></select></label>
+              <div class="picker-actions"><button id="selectVisible" class="ghost small" type="button">표시된 자료 선택</button><button id="clearSelected" class="ghost small" type="button">전체 해제</button></div>
+              <div id="sourcePicker" class="picker-list" role="group" aria-label="주차별·개별 자료 선택"></div>
+              <p class="hint">주차·기출 연도별로 선택하고 파일별 해제 가능. 검증 완료 자료만 선택할 수 있습니다.</p>
+            </section>
             <section class="card workspace-card prompt-card">
-              <div class="card-heading"><div><span class="step-number">02</span><h2>요청문 미리보기</h2></div><p>현재 강의 우선</p></div>
-              <label class="field prompt-field"><span class="sr-only">요청문 미리보기</span><textarea id="prompt" rows="18" readonly></textarea></label>
+              <div class="card-heading"><div><span class="step-number">03</span><h2>요청문 미리보기</h2></div><p>선택한 자료만 사용</p></div>
+              <label class="field prompt-field"><span class="sr-only">요청문 미리보기</span><textarea id="prompt" rows="10" readonly></textarea></label>
             </section>
           </div>
         </section>
@@ -135,6 +146,8 @@
             </section>
             <section class="card workspace-card note-editor-card">
               <div class="card-heading"><div><span class="step-number">02</span><h2>편집</h2></div><p>Markdown 원문 보존</p></div>
+              <div class="note-view-toolbar"><button type="button" id="previewNote" class="ghost small">문서 보기</button><button type="button" id="editNote" class="ghost small">원문 편집</button><button type="button" id="openLegacyStudy" class="ghost small">고급 편집기</button><button type="button" id="printNote" class="ghost small">PDF 인쇄</button></div>
+              <article id="notePreview" class="note-preview" aria-label="정리본 문서 미리보기" tabindex="0"></article>
               <form id="note-form" class="panel-form">
                 <label class="field">정리본 제목<input id="noteTitle" required maxlength="300"></label>
                 <label class="field">본문<textarea id="noteBody" rows="15" required placeholder="ChatGPT 결과를 붙여넣거나 직접 작성하세요."></textarea></label>
@@ -142,6 +155,14 @@
               </form>
             </section>
           </div>
+        </section>
+        <section id="page-solvepad" class="workspace-page" data-page-panel="solvepad" aria-labelledby="solvepad-title" hidden>
+          <div class="page-head"><div class="eyebrow">PRACTICE</div><h1 id="solvepad-title">SolvePad 문제풀이</h1><p class="sub">기존 필기·채점·오답 풀이 도구를 실행합니다. 문제팩 서버 연동은 별도 작업 중이므로 현재 로컬 풀이 기록과 구분해야 합니다.</p></div>
+          <iframe id="solvepadFrame" title="SolvePad 문제풀이" class="legacy-frame" data-lazy-src="/legacy/solvepad/index.html"></iframe>
+        </section>
+        <section id="page-casio" class="workspace-page" data-page-panel="casio" aria-labelledby="casio-title" hidden>
+          <div class="page-head"><div class="eyebrow">PROGRAMS</div><h1 id="casio-title">CASIO Studio</h1><p class="sub">기존 CASIO 프로젝트 편집 화면을 실행합니다. 이전 Render 전용 검증·ZIP 서버 기능은 현재 연결되지 않습니다.</p></div>
+          <iframe id="casioFrame" title="CASIO 프로그램 편집" class="legacy-frame" data-lazy-src="/legacy/casio/index.html"></iframe>
         </section>
       </main>
     </div>
@@ -151,6 +172,8 @@
       <button type="button" class="mobile-nav-item" data-page-target="sources" aria-controls="page-sources"><span aria-hidden="true">▤</span><small>자료</small></button>
       <button type="button" class="mobile-nav-item" data-page-target="gpt" aria-controls="page-gpt"><span aria-hidden="true">✦</span><small>GPT</small></button>
       <button type="button" class="mobile-nav-item" data-page-target="notes" aria-controls="page-notes"><span aria-hidden="true">▥</span><small>정리본</small></button>
+      <button type="button" class="mobile-nav-item" data-page-target="solvepad" aria-controls="page-solvepad"><span aria-hidden="true">✎</span><small>풀이</small></button>
+      <button type="button" class="mobile-nav-item" data-page-target="casio" aria-controls="page-casio"><span aria-hidden="true">∑</span><small>CASIO</small></button>
     </nav>
   </div>
   <script type="module" src="connected.js"></script>
