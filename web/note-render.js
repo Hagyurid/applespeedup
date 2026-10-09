@@ -1,5 +1,8 @@
+import {compactNoteIntroduction} from '../domain/note-presentation.mjs';
 /** Safe study-note preview. Markdown syntax becomes DOM nodes, never raw HTML. */
 const katex=import('/vendor/katex/katex.mjs').catch(()=>null);
+let mathTasks=[];
+export async function noteMathReady(){await Promise.all(mathTasks);}
 const el=(tag,text)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;return node;};
 function inline(target,text){
   const tokens=/(\$\$([^$]+)\$\$|\$([^$\n]+)\$|\*\*([^*]+)\*\*|==([^=]+)==|`([^`]+)`)/g;
@@ -9,19 +12,27 @@ function inline(target,text){
     if(match[2]||match[3]){
       const tex=match[2]||match[3],display=!!match[2];
       const span=el('span',tex);span.className=display?'note-math display':'note-math';target.append(span);
-      void katex.then(lib=>{if(lib&&span.isConnected)lib.render(tex,span,{throwOnError:false,trust:false,displayMode:display});});
+      mathTasks.push(katex.then(lib=>{if(lib&&span.isConnected)lib.render(tex,span,{throwOnError:false,trust:false,displayMode:display});}));
     }else if(match[4]){const strong=el('strong');inline(strong,match[4]);target.append(strong);}
     else if(match[5])target.append(el('mark',match[5]));
-    else target.append(el('code',match[6]));
+    else if(/\\(?:frac|sqrt|sum|int|mathrm|text)|^[A-Za-z]+_[A-Za-z0-9{]/.test(match[6])){
+      const span=el('span',match[6]);span.className='note-math';target.append(span);
+      mathTasks.push(katex.then(lib=>{if(lib&&span.isConnected)lib.render(match[6],span,{throwOnError:false,trust:false,displayMode:false});}));
+    }else target.append(el('code',match[6]));
     cursor=tokens.lastIndex;
   }
   if(cursor<text.length)target.append(document.createTextNode(text.slice(cursor)));
 }
 export function renderNoteMarkdown(target,markdown){
-  target.replaceChildren();const lines=String(markdown||'').replace(/\r\n?/g,'\n').split('\n');
+  mathTasks=[];target.replaceChildren();const lines=compactNoteIntroduction(markdown).replace(/\\\(/g,'$').replace(/\\\)/g,'$').replace(/\\\[/g,()=> '$$').replace(/\\\]/g,()=> '$$').replace(/\r\n?/g,'\n').split('\n');
   let i=0;
   while(i<lines.length){
     const line=lines[i];if(!line.trim()){i++;continue}
+    if(line.trim()==='$$'){
+      const tex=[];i++;while(i<lines.length&&lines[i].trim()!=='$$')tex.push(lines[i++]);if(i<lines.length)i++;
+      const block=el('div',tex.join('\n'));block.className='note-math display';target.append(block);
+      mathTasks.push(katex.then(lib=>{if(lib)lib.render(tex.join('\n'),block,{throwOnError:false,trust:false,displayMode:true});}));continue;
+    }
     if(/^```/.test(line)){
       const code=[];i++;
       while(i<lines.length&&!/^```/.test(lines[i]))code.push(lines[i++]);
@@ -43,7 +54,7 @@ export function renderNoteMarkdown(target,markdown){
     }
     if(/^>\s?/.test(line)){const quote=el('blockquote');while(i<lines.length&&/^>\s?/.test(lines[i])){const p=el('p');inline(p,lines[i++].replace(/^>\s?/,''));quote.append(p)}target.append(quote);continue;}
     const paragraph=[];
-    while(i<lines.length&&lines[i].trim()&&!/^(#{1,6}\s|```|>\s?|\s*([-*]|\d+\.)\s+)/.test(lines[i]))paragraph.push(lines[i++]);
+    while(i<lines.length&&lines[i].trim()&&!/^(#{1,6}\s|```|\$\$|>\s?|\s*([-*]|\d+\.)\s+)/.test(lines[i]))paragraph.push(lines[i++]);
     if(!paragraph.length){paragraph.push(lines[i++]);}
     const p=el('p');paragraph.forEach((part,index)=>{if(index)p.append(el('br'));inline(p,part)});target.append(p);
   }

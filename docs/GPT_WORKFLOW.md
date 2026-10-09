@@ -49,3 +49,7 @@
 - `get_course_generation_source`는 위 정책으로 읽는다. `additional_requests`는 최대 4,000자 선택 입력이며 생성 작업에 저장하고 이어하기에도 반환한다.
 
 파일 등록 이름은 파일명으로 자동 설정하며 붙여넣은 전사본에는 자동 이름을 붙입니다. 자료 목록과 선택 목록은 자료 유형·파일 형식 순으로 분류합니다. 저장된 절이 있는 GPT 생성 문서는 `generated:` ID로 선택·읽기 가능하며, 작업 생성 시 문서 버전을 고정해 변경 충돌을 검사합니다.
+
+## 전용 결과물 저장
+
+`exam_paper`는 목차 저장 후 `save_course_problem_pack(job_id, course_id, title, pack)`으로 직접 저장한다. `calculator`는 `save_course_casio_project(job_id, course_id, title, blueprint_json, program_text, manual_text)`으로 직접 저장한다. 두 모드는 정리본을 만들지 않으며 전용 결과물의 저장 성공 후에만 완료된다. 동일 작업의 재시도는 같은 ID와 같은 내용을 사용한다. 문서형 모드만 `save_course_part`를 사용한다. 정리본 수식은 LaTeX로 쓰고 확인 필요 항목은 최대 3줄로 줄인다. 자료 ID·검수 과정은 본문에 나열하지 않는다.

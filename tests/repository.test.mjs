@@ -25,7 +25,7 @@ test('ChatGPT transcript correction saves a separate verified copy and blocks ot
  assert.deepEqual(job.review_concerns[0].unresolved,['수식 근거 확인 필요']);
  value(await call('alice','save_course_outline',{job_id:job.id,sections:[{title:'정리'}]}));
  value(await call('alice','save_course_part',{job_id:job.id,section_index:1,content_markdown:'확인된 개념'}));
- assert.match((await repo.getNote('alice',{id:job.id})).content_markdown,/자료 검토 주의사항[\s\S]*수식 근거 확인 필요/);
+ assert.match((await repo.getNote('alice',{id:job.id})).content_markdown,/확인 필요[\s\S]*수식 근거 확인 필요/);
  assert.equal((await repo.getJobProgress('alice',{job_id:job.id})).review_concerns.length,1);
  value(await call('alice','save_course_review_page',{material_id:id,page_num:1,raw_text:'티엘 모듈러스',corrected_text:'Thiele modulus',unresolved:[]}));
  assert.equal((await repo.listMaterials('alice',{course_id:'chem'}))[0].review_status,'reviewed');

@@ -1,7 +1,7 @@
 import {DEFAULT_PRESETS} from '../domain/core.mjs';
 import {createSolvePad} from './solvepad.js';
 import {preparePdfPages} from './pdf-pages.js';
-import {renderNoteMarkdown} from './note-render.js';
+import {renderNoteMarkdown,noteMathReady} from './note-render.js';
 const $=id=>document.getElementById(id);
 const state={courses:[],offerings:[],sources:[],notes:[],jobs:[],editingNote:null,activeOffering:null,busy:false,writesEnabled:false,noteRequest:null,drafts:new Map(),selectedIds:new Set(),pdfTask:null,showNotePreview:true};
 const pageNames={courses:'강의 관리',sources:'강의자료',gpt:'GPT 제작실',notes:'정리본',solvepad:'SolvePad 문제풀이',casio:'CASIO Studio'};
@@ -120,7 +120,7 @@ function renderSources(){
   const registered=state.sources.filter(x=>!x.source_type.startsWith('generated_'));
   if(!registered.length){node.append(empty('등록된 자료가 없습니다.'));return;}
   for(const {name,items} of materialGroups(registered)){
-    const group=document.createElement('li');group.className='material-group';const heading=document.createElement('h3');heading.textContent=name+' · '+items.length+'개';const list=document.createElement('ul');list.className='material-items';group.append(heading,list);node.append(group);
+    const group=document.createElement('li');group.className='material-group';const heading=document.createElement('h3');heading.textContent=name;const list=document.createElement('ul');list.className='material-items';group.append(heading,list);node.append(group);
   for(const src of items){
     const li=document.createElement('li'),text=document.createElement('span');
     const loc=src.source_type==='past_exam'?(src.exam_year?`${src.exam_year}년`:'연도 미지정'):(src.weeks?.length?`${src.weeks.join(', ')}주차`:'주차 미지정');
@@ -183,7 +183,7 @@ function materialGroups(items){
   const groups=new Map();
   const format=x=>x.source_type==='generated_note'?'정리본':x.source_type==='generated_pack'?'문제팩':x.source_type==='generated_casio'?'CASIO 자료':x.mime_type==='application/pdf'?'PDF':x.mime_type?.includes('presentation')?'PPTX':x.mime_type?.startsWith('image/')?'이미지':x.mime_type?.includes('word')?'Word':x.mime_type?.includes('hwp')?'한글':'TXT·MD';
   const order=['lecture_slides','transcript','textbook','past_exam','generated_note','generated_pack','generated_casio','other'];
-  for(const item of items){const key=item.source_type+'|'+format(item);if(!groups.has(key))groups.set(key,{key,name:(types[item.source_type]||item.source_type)+' · '+format(item),items:[]});groups.get(key).items.push(item);}
+  for(const item of items){const label=item.source_type.startsWith('generated_')?format(item):item.source_type==='past_exam'?(item.exam_year?item.exam_year+'년':'연도 미지정'):item.weeks?.length?item.weeks.map(w=>w+'주차').join('·'):'주차 미지정';const key=item.source_type+'|'+label;if(!groups.has(key))groups.set(key,{key,name:(types[item.source_type]||item.source_type)+' · '+label,items:[]});groups.get(key).items.push(item);}
   return [...groups.values()].sort((a,b)=>order.indexOf(a.items[0].source_type)-order.indexOf(b.items[0].source_type)||a.name.localeCompare(b.name,'ko'));
 }
 function sourceDetails(item){
@@ -203,7 +203,7 @@ function renderPicker(){
     const checkbox=document.createElement('input');checkbox.type='checkbox';const ready=items.filter(isReviewed);
     checkbox.checked=ready.length>0&&ready.every(x=>state.selectedIds.has(x.id));checkbox.indeterminate=ready.some(x=>state.selectedIds.has(x.id))&&!checkbox.checked;checkbox.disabled=!ready.length;
     checkbox.onchange=()=>{for(const x of ready){if(checkbox.checked)state.selectedIds.add(x.id);else state.selectedIds.delete(x.id);}renderPicker();refreshPrompt();};
-    head.append(checkbox,document.createTextNode(name+' · '+items.length+'개'));group.append(head);
+    head.append(checkbox,document.createTextNode(name));group.append(head);
     for(const item of items){const row=document.createElement('label');row.className='picker-row';const check=document.createElement('input');check.type='checkbox';check.checked=state.selectedIds.has(item.id);check.disabled=!isReviewed(item);
       check.onchange=()=>{if(check.checked)state.selectedIds.add(item.id);else state.selectedIds.delete(item.id);renderPicker();refreshPrompt();};
       const text=document.createElement('span'),title=document.createElement('strong'),meta=document.createElement('small');title.className='material-name';title.textContent=materialLabel(item);meta.className='material-meta';meta.textContent=sourceDetails(item);text.append(title,meta);row.append(check,text);group.append(row);
@@ -228,7 +228,9 @@ function refreshPrompt(){
     '추가 요청사항: '+($('additionalRequests').value.trim()||'없음')+' · start_course_generation의 additional_requests에 그대로 저장해.',
     '교정본의 unresolved와 작업의 review_concerns를 함께 읽고, 불명확한 수치·수식·주장은 확정하지 마. 해당 절에 확인 필요를 표시하고 확인된 내용으로 제작을 계속해.',
     '반드시 목차를 먼저 만들고 save_course_outline로 저장한 뒤에 본문을 작성해.',
-    '이후 각 절마다 save_course_part를 호출해 정리본/버전을 자동 저장해. 별도 저장 지시를 요구하지 마.',
+    ...(mode==='exam_paper'?['목차 저장 후 문제·정답·해설을 구조화하고 save_course_problem_pack에 job_id, course_id, title, pack을 전달해 바로 저장해. pack은 solvepad.problemPack.v5 형식이며 questions마다 고유 id, promptMd, answer, solution을 포함해. 문서형 정리본은 만들지 마.']:mode==='calculator'?['목차 저장 후 save_course_casio_project에 job_id, course_id, title, blueprint_json, program_text, manual_text를 전달해 바로 저장해. 정리본은 만들지 마.']:['각 절마다 save_course_part로 정리본을 저장해.']),
+    '수식은 인라인 $...$ 또는 별도 줄의 $$...$$ LaTeX로 작성해. 아래첨자는 _{...}, 분수는 \\frac{...}{...}를 사용하고 수식을 코드 표시로 감싸지 마.',
+    '자료 ID·검수 과정·과목 메타데이터를 본문에 길게 나열하지 마. 정리본의 확인 필요 항목은 핵심만 1~3줄로 요약하고 없으면 생략해. 문제팩과 CASIO 코드·설명서에는 검수 주의사항을 넣지 마.',
     '파일의 사용자 지정 제목, 주차, 기출 연도는 원본 이름/OCR에서 유추해 덮어쓰지 마.',
     ...preset.rules.map(x=>'· '+x)
   ].join('\n');
@@ -273,7 +275,7 @@ function insertNote(before,after=''){
 }
 $('noteHeading').onclick=()=>insertNote('## ');
 $('noteBold').onclick=()=>insertNote('**','**');
-$('printNote').onclick=()=>{state.showNotePreview=true;renderNotePreview();window.print();};
+$('printNote').onclick=async()=>{state.showNotePreview=true;renderNotePreview();await noteMathReady();await document.fonts.ready;window.print();};
 $('noteBody').addEventListener('input',()=>{if(state.showNotePreview)renderNotePreview();});
 $('pickerSearch').oninput=renderPicker;$('pickerType').onchange=renderPicker;
 $('clearSelected').onclick=()=>{state.selectedIds.clear();renderPicker();refreshPrompt();};
@@ -290,7 +292,7 @@ $('copyResume').onclick=()=>run(async()=>{
  if(p.course_id!==course()?.id)throw Error('현재 과목의 작업이 아닙니다.');
  const msg=['@에쁠가속기 저장한 작업을 이어서 진행해줘.',`과목 ID: ${p.course_id}`,`작업 ID: ${p.job_id}`,`모드: ${p.mode} / 범위: ${p.scope}`,`저장된 추가 요청사항: ${p.additional_requests||'없음'}`,`생성 자료 버전: ${JSON.stringify(p.document_revisions||{})}`,
   `선택된 교정 자료 ID: ${p.source_ids.join(', ')}`,`저장된 절: ${p.saved_parts.join(', ')||'없음'}`,
-  '먼저 get_course_generation_progress로 실제 저장 상태를 다시 확인하고, 저장된 목차와 교정본을 사용해 빠진 절만 save_course_part로 저장해.',
+  p.mode==='exam_paper'?'진행 상태를 확인하고 저장된 문항·정답·해설을 save_course_problem_pack에 job_id와 함께 구조화해 바로 저장해.':p.mode==='calculator'?'진행 상태를 확인하고 save_course_casio_project에 job_id와 함께 코드를 바로 저장해.':'먼저 진행 상태를 확인하고 저장된 목차와 자료를 사용해 빠진 절만 save_course_part로 저장해.',
   'get_course_generation_progress의 파일 사용 방식과 추가 요청사항을 유지해. 기존 절을 덮어쓰지 마. 수정 충돌이 있으면 멈추고 보고해.'].join('\n');
  await navigator.clipboard.writeText(msg);
  $('jobProgress').textContent=`${p.status} · 목차 ${p.outline.length}절 · 저장 ${p.saved_parts.length}절 · 요청문 복사 완료`;
@@ -308,19 +310,11 @@ const listRefreshed=async()=>{
 $('refreshPacks').onclick=()=>run(listRefreshed,'문제팩 목록을 갱신했습니다.');
 $('refreshCasio').onclick=()=>run(listRefreshed,'프로젝트 목록을 갱신했습니다.');
 $('loadPack').onclick=()=>run(async()=>{
- const id=$('packSelect').value;if(!id)throw Error('과목별 문제팩이 없습니다. GPT에서 문제팩을 저장하거나 JSON을 등록하세요.');
+ const id=$('packSelect').value;if(!id)throw Error('과목별 문제팩이 없습니다. GPT 제작실에서 시험형 문제집을 생성하세요.');
  const record=await call('/api/v2/pack?id='+encodeURIComponent(id));
  if(!course()||!record.pack?.questions?.length)throw Error('문제팩 내용이 올바르지 않습니다.');
  await pad.load(id,record);
 },'문제팩을 열었습니다.');
-$('packUpload').onchange=e=>run(async()=>{
- const file=e.target.files?.[0];if(!file)return;
- if(file.size>1024*1024)throw Error('문제팩 JSON 파일은 최대 1 MiB입니다.');
- let pack;try{pack=JSON.parse(await file.text());}catch{throw Error('올바른 문제팩 JSON이 아닙니다.');}
- if(!pack||!Array.isArray(pack.questions)||!pack.questions.length)throw Error('문제가 없는 파일입니다.');
- const saved=await call('/api/v2/pack',json({course_id:course().id,title:pack.title||file.name,pack}));
- await listRefreshed();$('packSelect').value=saved.id;e.target.value='';
-},'문제팩을 현재 과목에 저장했습니다.');
 $('loadCasio').onclick=()=>run(async()=>{
  const id=$('casioSelect').value;if(!id)throw Error('저장된 CASIO 프로젝트가 없습니다.');
  const record=await call('/api/v2/casio-item?id='+encodeURIComponent(id));
@@ -346,7 +340,7 @@ async function run(fn,success='저장된 자료를 확인했습니다.'){
   finally{state.busy=false;controls.forEach(([el,disabled])=>{if(el.isConnected)el.disabled=disabled;});applyWriteLock();}
 }
 function applyWriteLock(){
- document.querySelectorAll('#course-form button,#deleteCourse,#source-form button,#note-form button,#noteNew,#packUpload,#casioForm button').forEach(el=>el.disabled=!state.writesEnabled);
+ document.querySelectorAll('#course-form button,#deleteCourse,#source-form button,#note-form button,#noteNew,#casioForm button').forEach(el=>el.disabled=!state.writesEnabled);
  pad.setWritable(state.writesEnabled);
 }
 $('globalCourse').onchange=()=>run(async()=>{const target=$('globalCourse').value;$('course').value=target;state.selectedIds.clear();await refreshOfferings();});$('course').onchange=()=>run(async()=>{$('globalCourse').value=$('course').value;state.selectedIds.clear();await refreshOfferings();});$('offering').onchange=()=>run(refreshOfferingData);
@@ -354,7 +348,7 @@ $('mode').onchange=refreshPrompt;$('scope').oninput=refreshPrompt;$('additionalR
 $('course-form').onsubmit=e=>{e.preventDefault();run(async()=>{const r=await call('/api/courses',json({name:$('courseName').value,characteristics:$('characteristics').value}));$('course-form').reset();await refreshCourses(r.id);});};
 $('deleteCourse').onclick=()=>{
  const current=course();if(!current)return fail('삭제할 과목을 선택하세요.');
- const typed=window.prompt(`「${current.name}」 과목과 자료·정리본·작업을 모두 삭제합니다. 확인하려면 과목 이름을 그대로 입력하세요.`);
+ const typed=window.prompt(`「${current.name}」 과목과 모든 파일·정리본·문제팩·CASIO 코드·풀이 기록·작업을 영구 삭제합니다. 확인하려면 과목 이름을 그대로 입력하세요.`);
  if(typed!==current.name)return;
  run(async()=>{
    if(current.id!==course()?.id)throw Error('선택 과목이 바뀌었습니다. 다시 확인하세요.');

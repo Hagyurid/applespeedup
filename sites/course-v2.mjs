@@ -52,7 +52,7 @@ export function createCourseLibrary(db,bucket){
     const revision=parseInt([...hash.subarray(0,6)].map(n=>n.toString(16).padStart(2,'0')).join(''),16);
     return {...row,id,original_text,revision,mime_type:'text/plain',source_type:'generated_'+kind[1],page_count:1};
    }
-   const document=await one("SELECT d.* FROM course_documents d WHERE d.id=? AND EXISTS(SELECT 1 FROM course_generation_jobs j WHERE j.document_id=d.id AND EXISTS(SELECT 1 FROM course_generation_parts p WHERE p.job_id=j.id))",id.slice(10));
+   const document=await one("SELECT d.* FROM course_documents d WHERE d.id=? AND EXISTS(SELECT 1 FROM course_generation_jobs j WHERE j.document_id=d.id AND j.mode NOT IN ('exam_paper','calculator') AND EXISTS(SELECT 1 FROM course_generation_parts p WHERE p.job_id=j.id))",id.slice(10));
    if(!document)fail('NOT_FOUND');await access(user,document.course_id);
    return {...document,id,document_id:document.id,original_text:document.content_markdown,mime_type:'text/markdown',source_type:'generated_note',page_count:1};
   }
@@ -106,16 +106,16 @@ export function createCourseLibrary(db,bucket){
  }
  async function reviewNotice(user,run){
   const concerns=await sourceConcerns(user,JSON.parse(run.source_ids_json),[],JSON.parse(run.generation_options_json||'{}').document_revisions||{});
-  if(!concerns.length)return '';
+  if(['exam_paper','calculator'].includes(run.mode)||!concerns.length)return '';
   const escape=s=>String(s).replace(/[\\`*_{}\[\]<>#|]/g,'\\$&').replace(/[\r\n]+/g,' ');
-  return '## 자료 검토 주의사항\n\n다음 항목은 확인이 필요합니다. 해당 수치·수식·주장을 확정된 사실로 사용하지 마세요.\n\n'+
-    concerns.flatMap(p=>p.unresolved.map(issue=>'- '+escape(p.title)+' · '+p.page_num+'쪽: '+escape(issue))).join('\n')+'\n\n';
+  const items=[...new Set(concerns.flatMap(p=>p.unresolved.map(issue=>p.page_num+'쪽: '+String(issue).replace(/[\r\n]+/g,' ').slice(0,110))))];
+  return '## 확인 필요\n\n'+items.slice(0,2).map(x=>'- '+escape(x)).join('\n')+(items.length>2?'\n- 그 외 '+(items.length-2)+'건은 자료 검수 기록에서 확인하세요.':'')+'\n\n';
  }
  return {
   async listMaterials(user,{course_id,type='all'}={}){
    await access(user,course_id);
    const rows=await all("SELECT id,course_id,title,source_type,weeks_json,exam_year,original_filename AS file_name,mime_type,provenance,review_status,page_count,created_at,(SELECT count(*) FROM course_material_page_images p WHERE p.material_id=course_materials.id) AS prepared_pages,(SELECT count(*) FROM course_material_pages p WHERE p.material_id=course_materials.id AND p.page_num BETWEEN 1 AND course_materials.page_count) AS recorded_pages,(SELECT count(*) FROM course_material_pages p WHERE p.material_id=course_materials.id AND p.page_num BETWEEN 1 AND course_materials.page_count AND json_array_length(p.unresolved_json)>0) AS issue_pages FROM course_materials WHERE course_id=? ORDER BY created_at DESC,id DESC LIMIT 400",course_id);
-   const generated=await all("SELECT d.id AS document_id,d.title,d.revision,d.type,d.updated_at FROM course_documents d WHERE d.course_id=? AND EXISTS(SELECT 1 FROM course_generation_jobs j WHERE j.document_id=d.id AND EXISTS(SELECT 1 FROM course_generation_parts p WHERE p.job_id=j.id)) ORDER BY d.updated_at DESC LIMIT 400",course_id);
+   const generated=await all("SELECT d.id AS document_id,d.title,d.revision,d.type,d.updated_at FROM course_documents d WHERE d.course_id=? AND EXISTS(SELECT 1 FROM course_generation_jobs j WHERE j.document_id=d.id AND j.mode NOT IN ('exam_paper','calculator') AND EXISTS(SELECT 1 FROM course_generation_parts p WHERE p.job_id=j.id)) ORDER BY d.updated_at DESC LIMIT 400",course_id);
    const catalog=rows.map(({weeks_json,...r})=>{const review_status=reviewState(r);return {...r,review_status,processing_mode:useOriginal(r)?'original':r.source_type==='transcript'&&!VISUAL.has(r.mime_type)?'transcript':'review',can_use_original:useOriginal(r),available_for_generation:review_status!=='pending_review',weeks:JSON.parse(weeks_json||'[]'),extract_status:review_status!=='pending_review'?'ready':'pending'};});
    catalog.push(...generated.map(d=>({...d,id:'generated:'+d.document_id,course_id,source_type:'generated_note',mime_type:'text/markdown',processing_mode:'generated',review_status:'generated_ready',available_for_generation:true,weeks:[],page_count:1})));
    const [packs,casio]=await Promise.all([
@@ -180,6 +180,9 @@ export function createCourseLibrary(db,bucket){
     all('SELECT s.storage_key FROM source_assets s JOIN offerings o ON o.id=s.offering_id WHERE o.course_id=?',id),
     all('SELECT p.storage_key FROM source_page_images p JOIN source_assets s ON s.id=p.source_id JOIN offerings o ON o.id=s.offering_id WHERE o.course_id=?',id)
    ]);
+   const keys=[...materials,...images,...legacy,...legacyImages].map(row=>row.storage_key).filter(Boolean);
+   if(keys.length&&!bucket?.delete)fail('STORAGE_NOT_CONFIGURED');
+   for(let i=0;i<keys.length;i+=20){const results=await Promise.allSettled(keys.slice(i,i+20).map(key=>bucket.delete(key)));if(results.some(x=>x.status==='rejected'))fail('STORAGE_DELETE_FAILED');}
    // These references have NO ACTION foreign keys and must be removed before their parents.
    await db.batch([
     q('DELETE FROM private_attempts WHERE pack_id IN (SELECT p.id FROM problem_packs p JOIN offerings o ON o.id=p.offering_id WHERE o.course_id=?)',id),
@@ -188,8 +191,6 @@ export function createCourseLibrary(db,bucket){
     q('DELETE FROM course_facts WHERE course_id=?',id),
     q('DELETE FROM courses WHERE id=? AND owner_user_id=?',id,user)
    ]);
-   const keys=[...materials,...images,...legacy,...legacyImages].map(row=>row.storage_key).filter(Boolean);
-   await Promise.allSettled(keys.map(key=>bucket?.delete(key)));
    return {id,deleted:true};
   },
   async setPdfPageCount(user,{material_id,page_count}={}){
@@ -335,7 +336,7 @@ export function createCourseLibrary(db,bucket){
    const rows=await all("SELECT p.material_id AS source_id,m.title AS source_title,p.page_num,substr(p.corrected_text,1,1400) AS content,p.unresolved_json,p.evidence_json FROM course_material_pages p JOIN course_materials m ON m.id=p.material_id WHERE m.course_id=? AND p.corrected_text LIKE ? ESCAPE '\\' ORDER BY m.created_at DESC,p.page_num LIMIT 30",course_id,pattern);
    return rows.map(({unresolved_json,evidence_json,...row})=>({...row,unresolved:JSON.parse(unresolved_json||'[]'),evidence_ids:JSON.parse(evidence_json||'[]')}));
   },
-  async listNotes(user,{course_id}={}){await access(user,course_id);return all("SELECT id,title,type,revision,updated_at FROM course_documents WHERE course_id=? ORDER BY updated_at DESC",course_id)},
+  async listNotes(user,{course_id}={}){await access(user,course_id);return all("SELECT id,title,type,revision,updated_at FROM course_documents WHERE course_id=? AND NOT EXISTS(SELECT 1 FROM course_generation_jobs j WHERE j.document_id=course_documents.id AND j.mode IN ('exam_paper','calculator')) ORDER BY updated_at DESC",course_id)},
   async getNote(user,{id}={}){return note(user,id)},
   async listNoteVersions(user,{id}={}){
    await note(user,id);
@@ -376,7 +377,18 @@ export function createCourseLibrary(db,bucket){
   },
   async listPacks(user,{course_id}={}){await access(user,course_id);return all("SELECT id,title,created_at FROM course_problem_packs WHERE course_id=? ORDER BY created_at DESC",course_id)},
   async getPack(user,{id}={}){const p=await one("SELECT * FROM course_problem_packs WHERE id=?",id);if(!p)fail('NOT_FOUND');await access(user,p.course_id);return {id:p.id,title:p.title,pack:JSON.parse(p.pack_json)}},
-  async savePack(user,{course_id,title,pack}={}){await access(user,course_id,true);if(!pack||typeof pack!=='object'||!Array.isArray(pack.questions)||pack.questions.length>500)fail('BAD_REQUEST');const id=uid();await q("INSERT INTO course_problem_packs(id,course_id,title,pack_json) VALUES(?,?,?,?)",id,course_id,clean(title,200),JSON.stringify(pack)).run();return {id}},
+  async savePack(user,{course_id,title,pack,job_id=pack?.generation_job_id}={}){
+   await access(user,course_id,true);
+   if(!pack||typeof pack!=='object'||!Array.isArray(pack.questions)||!pack.questions.length||pack.questions.length>500||pack.questions.some(x=>!x||typeof x.id!=='string'||!x.id.trim()||typeof x.promptMd!=='string'||!x.promptMd.trim()||x.answer===undefined||x.answer===null||!x.solution)||new Set(pack.questions.map(x=>x.id)).size!==pack.questions.length)fail('BAD_REQUEST');
+   const run=job_id?await job(user,job_id):null;
+   if(run&&(run.course_id!==course_id||run.mode!=='exam_paper'||!JSON.parse(run.outline_json||'[]').length))fail('BAD_REQUEST');
+   const id=run?.id||uid(),name=clean(title,200),payload=JSON.stringify(pack);
+   const prev=await one("SELECT pack_json FROM course_problem_packs WHERE id=?",id);
+   if(prev&&prev.pack_json!==payload)fail('REVISION_CONFLICT');
+   const statements=[q("INSERT OR IGNORE INTO course_problem_packs(id,course_id,title,pack_json) VALUES(?,?,?,?)",id,course_id,name,payload)];
+   if(run)statements.push(q("UPDATE course_generation_jobs SET document_id=NULL,status='complete' WHERE id=?",id),q("DELETE FROM course_documents WHERE id=?",run.document_id||id));
+   await db.batch(statements);return {id,job_id:run?.id,status:'complete',output_type:'problem_pack'};
+  },
   async getAttempt(user,{pack_id,question_id}={}){await this.getPack(user,{id:pack_id});return one("SELECT data_json FROM course_attempts WHERE user_id=? AND pack_id=? AND question_id=?",user,pack_id,question_id)},
   async listAttempts(user,{pack_id}={}){await this.getPack(user,{id:pack_id});return all("SELECT question_id,data_json,updated_at FROM course_attempts WHERE user_id=? AND pack_id=? ORDER BY updated_at DESC",user,pack_id)},
   async saveAttempt(user,{pack_id,question_id,answer='',strokes=[],result='',bookmarked=false}={}){
@@ -388,10 +400,18 @@ export function createCourseLibrary(db,bucket){
   },
   async listCasio(user,{course_id}={}){await access(user,course_id);return all("SELECT id,title,updated_at FROM course_casio_projects WHERE course_id=? ORDER BY updated_at DESC",course_id)},
   async getCasio(user,{id}={}){const c=await one("SELECT * FROM course_casio_projects WHERE id=?",id);if(!c)fail('NOT_FOUND');await access(user,c.course_id);return c},
-  async saveCasio(user,{course_id,id,title,blueprint_json='{}',program_text='',manual_text=''}={}){
+  async saveCasio(user,{course_id,id,job_id,title,blueprint_json='{}',program_text='',manual_text=''}={}){
    await access(user,course_id,true);const name=clean(title,200);
    if(typeof blueprint_json!=='string'||blueprint_json.length>300000||typeof program_text!=='string'||program_text.length>300000||typeof manual_text!=='string'||manual_text.length>300000)fail('BAD_REQUEST');
    try{JSON.parse(blueprint_json)}catch{fail('BAD_REQUEST')}
+   if(job_id){
+    const run=await job(user,job_id);
+    if(run.course_id!==course_id||run.mode!=='calculator'||!JSON.parse(run.outline_json||'[]').length||!program_text.trim())fail('BAD_REQUEST');
+    const prev=await one("SELECT * FROM course_casio_projects WHERE id=?",job_id);
+    if(prev&&(prev.program_text!==program_text||prev.blueprint_json!==blueprint_json||prev.manual_text!==manual_text))fail('REVISION_CONFLICT');
+    await db.batch([q("INSERT OR IGNORE INTO course_casio_projects(id,course_id,title,blueprint_json,program_text,manual_text) VALUES(?,?,?,?,?,?)",job_id,course_id,name,blueprint_json,program_text,manual_text),q("UPDATE course_generation_jobs SET document_id=NULL,status='complete' WHERE id=?",job_id),q("DELETE FROM course_documents WHERE id=?",run.document_id||job_id)]);
+    return {id:job_id,job_id,status:'complete',output_type:'casio'};
+   }
    if(id){const prev=await this.getCasio(user,{id});if(prev.course_id!==course_id)fail('FORBIDDEN');await q("UPDATE course_casio_projects SET title=?,blueprint_json=?,program_text=?,manual_text=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",name,blueprint_json,program_text,manual_text,id).run();return {id}}
    const key=uid();await q("INSERT INTO course_casio_projects(id,course_id,title,blueprint_json,program_text,manual_text) VALUES(?,?,?,?,?,?)",key,course_id,name,blueprint_json,program_text,manual_text).run();return {id:key};
   },
@@ -410,6 +430,10 @@ export function createCourseLibrary(db,bucket){
    const run=await job(user,job_id);
    if(run.status!=='awaiting_outline'||!Array.isArray(sections)||!sections.length||sections.length>80||sections.some(x=>!x||typeof x.title!=='string'||!x.title.trim()||x.title.length>200))fail('BAD_REQUEST');
    const outline=sections.map((x,i)=>({index:i+1,title:x.title.trim()}));
+   if(['exam_paper','calculator'].includes(run.mode)){
+    await q("UPDATE course_generation_jobs SET status='outlined',outline_json=? WHERE id=? AND status='awaiting_outline'",JSON.stringify(outline),job_id).run();
+    return {job_id,status:'outlined',output_type:run.mode==='exam_paper'?'problem_pack':'casio'};
+   }
    const markdown=await reviewNotice(user,run)+outline.map(x=>'## '+x.title+'\n\n[작성 중]').join('\n\n');
    const [,updated]=await db.batch([
     q("INSERT OR IGNORE INTO course_documents(id,course_id,type,title,content_markdown) SELECT id,course_id,'study_note',mode||' · '||scope,? FROM course_generation_jobs WHERE id=? AND status='awaiting_outline'",markdown,job_id),
@@ -423,6 +447,14 @@ export function createCourseLibrary(db,bucket){
    const run=await job(user,job_id),outline=JSON.parse(run.outline_json||'[]');
    if(run.status==='awaiting_outline'||!outline.length)fail('OUTLINE_REQUIRED');
    if(!Number.isInteger(section_index)||section_index<1||section_index>outline.length)fail('BAD_REQUEST');
+   if(['exam_paper','calculator'].includes(run.mode)){
+    const body=clean(content_markdown,200000);
+    await q("INSERT OR IGNORE INTO course_generation_parts(job_id,section_index,content_markdown) VALUES(?,?,?)",job_id,section_index,body).run();
+    const stored=await one("SELECT content_markdown FROM course_generation_parts WHERE job_id=? AND section_index=?",job_id,section_index);
+    if(stored.content_markdown!==body)fail('REVISION_CONFLICT');
+    if(run.status!=='complete')await q("UPDATE course_generation_jobs SET status='awaiting_artifact' WHERE id=?",job_id).run();
+    return {job_id,status:run.status==='complete'?'complete':'awaiting_artifact',next_tool:run.mode==='exam_paper'?'save_course_problem_pack':'save_course_casio_project'};
+   }
    if(run.document_id){
     const current=await one("SELECT revision FROM course_documents WHERE id=?",run.document_id);
     if(!current||current.revision!==run.document_revision)fail('REVISION_CONFLICT');
@@ -467,7 +499,10 @@ export function createCourseLibrary(db,bucket){
   async getJobProgress(user,{job_id}={}){
    const j=await job(user,job_id);
    const parts=await all("SELECT section_index FROM course_generation_parts WHERE job_id=? ORDER BY section_index",job_id);
-   return {job_id:j.id,course_id:j.course_id,mode:j.mode,scope:j.scope,status:j.status,document_id:j.document_id,
+   const specialized=['exam_paper','calculator'].includes(j.mode);
+   const artifact=specialized?await one(j.mode==='exam_paper'?"SELECT id FROM course_problem_packs WHERE id=?":"SELECT id FROM course_casio_projects WHERE id=?",j.id):null;
+   const status=specialized&&j.status==='complete'&&!artifact?'awaiting_artifact':j.status;
+   return {job_id:j.id,course_id:j.course_id,mode:j.mode,scope:j.scope,status,document_id:j.document_id,output_type:j.mode==='exam_paper'?'problem_pack':j.mode==='calculator'?'casio':'study_note',output_id:artifact?.id||null,
     source_ids:JSON.parse(j.source_ids_json),...JSON.parse(j.generation_options_json||'{}'),original_source_ids:[],review_concerns:await sourceConcerns(user,JSON.parse(j.source_ids_json),[],JSON.parse(j.generation_options_json||'{}').document_revisions||{}),outline:JSON.parse(j.outline_json),saved_parts:parts.map(x=>x.section_index)};
   },
   async getJob(user,{id}={}){return this.getJobProgress(user,{job_id:id})},

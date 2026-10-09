@@ -116,7 +116,7 @@ test('course notes, SolvePad packs/attempts and CASIO projects are authorized',a
  const revised=await repo.saveNote('alice',{course_id:'chem',id:note.id,title:'수정본',content_markdown:'# 교정',expected_revision:1});
  assert.equal(revised.revision,2);
  await assert.rejects(()=>repo.saveNote('alice',{course_id:'chem',id:note.id,title:'손상',content_markdown:'bad',expected_revision:1}),/REVISION_CONFLICT/);
- const pack={schemaVersion:'solvepad.problemPack.v5',questions:[{id:'q1',body:'2+2=?'}]};
+ const pack={schemaVersion:'solvepad.problemPack.v5',questions:[{id:'q1',promptMd:'2+2=?',answer:'4',solution:'2+2=4'}]};
  const p=await repo.savePack('alice',{course_id:'chem',title:'연습문제',pack});
  assert.equal((await repo.getPack('alice',{id:p.id})).pack.schemaVersion,'solvepad.problemPack.v5');
  await repo.saveAttempt('alice',{pack_id:p.id,question_id:'q1',answer:'4',strokes:[[1,2]],bookmarked:true});
@@ -201,4 +201,25 @@ test('parallel generated sections converge on one document and keep each revisio
  const note=await repo.getNote('alice',{id:progress.document_id});
  assert.match(note.content_markdown,/A 내용/);assert.match(note.content_markdown,/B 내용/);
  assert.equal((await repo.listNoteVersions('alice',{id:note.id})).length,note.revision);
+});
+
+test('exam and calculator save only native artifacts with owned idempotent job completion',async()=>{
+ const {repo,db}=setup();
+ const src=await repo.registerText('alice',{course_id:'chem',source_type:'other',title:'원문',content:'기체 법칙'});
+ for(const mode of ['exam_paper','calculator']){
+  const run=await repo.startJob('alice',{course_id:'chem',mode,source_ids:[src.id]});const job_id=run.id;
+  await repo.saveOutline('alice',{job_id,sections:[{title:'문제 또는 코드'}]});
+  assert.equal((await repo.listNotes('alice',{course_id:'chem'})).length,0);
+  const staged=await repo.savePart('alice',{job_id,section_index:1,content_markdown:'임시 내용'});assert.equal(staged.status,'awaiting_artifact');
+  const args={course_id:'chem',job_id,title:'결과'};
+  if(mode==='exam_paper'){
+   args.pack={questions:[{id:'q1',promptMd:'$P V=n R T$',answer:'이상기체',solution:'기체 법칙'}]};
+   await assert.rejects(()=>repo.savePack('bob',args));
+   await repo.savePack('alice',args);await repo.savePack('alice',args);
+   assert.equal((await repo.listPacks('alice',{course_id:'chem'})).length,1);
+   await assert.rejects(()=>repo.savePack('alice',{...args,pack:{questions:[{id:'q1',promptMd:'다른 문제',answer:'1',solution:'1'}]}}),/REVISION_CONFLICT/);
+  }else{args.program_text='1+1';await repo.saveCasio('alice',args);await repo.saveCasio('alice',args);assert.equal((await repo.listCasio('alice',{course_id:'chem'})).length,1);}
+  const progress=await repo.getJobProgress('alice',{job_id});assert.equal(progress.status,'complete');assert.equal(progress.document_id,null);assert.equal(progress.output_id,job_id);
+  assert.equal(db.db.prepare('SELECT count(*) AS n FROM course_documents').get().n,0);
+ }
 });

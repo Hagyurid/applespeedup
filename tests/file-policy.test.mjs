@@ -58,7 +58,7 @@ test('automatic names and generated reference selection preserve course scope an
 
 test('saved problem packs and CASIO projects can be selected without cross-course access or silent edits',async()=>{
  const {repo}=setup();
- const pack=await repo.savePack('a',{course_id:'c',title:'문제팩',pack:{schemaVersion:'solvepad.problemPack.v5',questions:[{id:'q',promptMd:'문제',answer:{value:'1'}}]}});
+ const pack=await repo.savePack('a',{course_id:'c',title:'문제팩',pack:{schemaVersion:'solvepad.problemPack.v5',questions:[{id:'q',promptMd:'문제',answer:{value:'1'},solution:'풀이'}]}});
  const casio=await repo.saveCasio('a',{course_id:'c',title:'계산기',program_text:'1->A'});
  for(const ref of ['generated:pack:'+pack.id,'generated:casio:'+casio.id]){const data=await repo.generationSource('a',{material_id:ref});assert.equal(data.provenance,'gpt_generated_reference');await assert.rejects(()=>repo.generationSource('b',{material_id:ref}),/NOT_FOUND/);}
  const ref='generated:casio:'+casio.id;const j=await repo.startJob('a',{course_id:'c',mode:'calculator',source_ids:[ref]});

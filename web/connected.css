@@ -214,3 +214,7 @@ body{background:#f6f7f9}
 .material-meta{display:block;font-size:.875rem;color:#606875;line-height:1.5;margin-top:3px}
 .picker-row{font-size:1rem;padding-left:0}
 .picker-group-title{font-size:1rem}
+
+.note-preview{white-space:normal;overflow-wrap:break-word;font-size:1rem}.note-math.display{display:block;overflow-x:auto;margin:1em 0}.note-preview .katex{font-size:1.1em}
+@page{size:A4 portrait;margin:16mm}
+@media print{html,body,.workspace-shell,.workspace-main,.notes-layout,.note-editor-card{display:block!important;width:auto!important;max-width:none!important;min-width:0!important;height:auto!important;min-height:0!important;margin:0!important;padding:0!important;background:white!important}.page-head,.note-editor-card>.card-heading,.note-history{display:none!important}.note-editor-card{border:0!important;box-shadow:none!important}.note-preview{padding:0!important;margin:0!important;max-height:none!important;height:auto!important;overflow:visible!important;font-size:11pt!important;color:black!important}.note-preview table{min-width:0!important;table-layout:auto}.note-preview th,.note-preview td{min-width:0!important;padding:5px}.note-table-wrap,.note-math.display{overflow:visible!important}.note-preview pre{white-space:pre-wrap;overflow-wrap:break-word}.note-preview h1,.note-preview h2,.note-preview h3{break-after:avoid}.note-preview tr{break-inside:avoid}}
