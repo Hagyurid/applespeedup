@@ -3,7 +3,7 @@ import {createSolvePad} from './solvepad.js';
 import {preparePdfPages} from './pdf-pages.js';
 import {renderNoteMarkdown} from './note-render.js';
 const $=id=>document.getElementById(id);
-const state={courses:[],offerings:[],sources:[],notes:[],jobs:[],editingNote:null,activeOffering:null,busy:false,writesEnabled:false,noteRequest:null,drafts:new Map(),selectedIds:new Set(),pdfTask:null,showNotePreview:true};
+const state={courses:[],offerings:[],sources:[],notes:[],jobs:[],editingNote:null,activeOffering:null,busy:false,writesEnabled:false,noteRequest:null,drafts:new Map(),selectedIds:new Set(),originalIds:new Set(),pdfTask:null,showNotePreview:true};
 const pageNames={courses:'강의 관리',sources:'강의자료',gpt:'GPT 제작실',notes:'정리본',solvepad:'SolvePad 문제풀이',casio:'CASIO Studio'};
 const setStatus=msg=>{$('status').textContent=msg;const side=$('sidebarStatus');if(side)side.textContent=msg;};
 const fail=msg=>{$('error').textContent=msg;$('error').hidden=false;};
@@ -11,7 +11,8 @@ const clear=()=>{$('error').hidden=true;};
 const course=()=>state.courses.find(x=>x.id===$('course').value);
 const offering=()=>course()?{id:course().id}:null;
 const selectedSources=()=>state.sources.filter(x=>state.selectedIds.has(x.id));
-const isReviewed=src=>['reviewed','reviewed_with_issues'].includes(src.review_status);
+const isReviewed=src=>['reviewed','reviewed_with_issues','original_ready'].includes(src.review_status)||state.originalIds.has(src.id);
+const usesOriginal=src=>src.processing_mode==='original'||state.originalIds.has(src.id);
 function pageFromLocation(){const page=location.hash.slice(1);return pageNames[page]?page:'courses';}
 function showPage(page,{push=false,focus=false}={}){
   const active=pageNames[page]?page:'courses';
@@ -106,8 +107,8 @@ for(let w=1;w<=30;w++){
 $('sourceType').addEventListener('change',syncSourceMetadataFields);
 syncSourceMetadataFields();
 function rememberDraft(){if(state.activeOffering)state.drafts.set(state.activeOffering,{title:$('noteTitle').value,body:$('noteBody').value,editing:state.editingNote,request:state.noteRequest,
-  source:{title:$('sourceTitle').value,text:$('transcript').value,type:$('sourceType').value,provenance:$('provenance').value,file:$('sourceFile').files[0],weeks:sourceWeeks(),examYear:$('examYear').value}});}
-function restoreDraft(id){const d=state.drafts.get(id);$('noteTitle').value=d?.title||'';$('noteBody').value=d?.body||'';state.editingNote=d?.editing||null;state.noteRequest=d?.request||null;
+  gpt:{additional:$('additionalRequests').value,mode:$('mode').value,scope:$('scope').value},source:{title:$('sourceTitle').value,text:$('transcript').value,type:$('sourceType').value,provenance:$('provenance').value,file:$('sourceFile').files[0],weeks:sourceWeeks(),examYear:$('examYear').value}});}
+function restoreDraft(id){const d=state.drafts.get(id);$('additionalRequests').value=d?.gpt?.additional||'';if(d?.gpt){$('mode').value=d.gpt.mode;$('scope').value=d.gpt.scope;}$('noteTitle').value=d?.title||'';$('noteBody').value=d?.body||'';state.editingNote=d?.editing||null;state.noteRequest=d?.request||null;
   $('source-form').reset();if(d?.source){$('sourceTitle').value=d.source.title;$('transcript').value=d.source.text;$('sourceType').value=d.source.type;$('provenance').value=d.source.provenance;
     if(d.source.file&&typeof DataTransfer!=='undefined'){const files=new DataTransfer();files.items.add(d.source.file);$('sourceFile').files=files.files;}
     $('examYear').value=d.source.examYear||'';for(const el of $('weeksGrid').querySelectorAll('input'))el.checked=(d.source.weeks||[]).includes(Number(el.value));}
@@ -119,12 +120,12 @@ function renderSources(){
   for(const src of state.sources){
     const li=document.createElement('li'),text=document.createElement('span');
     const loc=src.source_type==='past_exam'?(src.exam_year?`${src.exam_year}년`:'연도 미지정'):(src.weeks?.length?`${src.weeks.join(', ')}주차`:'주차 미지정');
-    const needsConversion=['application/x-hwp','application/vnd.hancom.hwpx','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.openxmlformats-officedocument.presentationml.presentation'].includes(src.mime_type);
-    const review=isReviewed(src)?(src.review_status==='reviewed_with_issues'?`검토 저장 · 주의 ${src.issue_pages}쪽`:'검토 저장'):src.mime_type==='application/pdf'
+    const needsConversion=src.mime_type==='application/msword';
+    const review=src.processing_mode==='original'?'원문 사용 · 검수 불필요':isReviewed(src)?(src.review_status==='reviewed_with_issues'?`검토 저장 · 주의 ${src.issue_pages}쪽`:'검토 저장'):src.mime_type==='application/pdf'
       ?`페이지 준비 ${src.prepared_pages||0}/${src.page_count||'?'} · GPT 검토 대기`:needsConversion?'원본 보관 · PDF/TXT 변환 필요':'GPT 교정 대기';
     text.textContent=`${src.title} · ${types[src.source_type]||src.source_type} · ${loc} · ${review}`;li.append(text);
     if(src.file_name){const b=document.createElement('button');b.type='button';b.className='ghost small';b.textContent='원본 다운로드';b.onclick=()=>{const a=document.createElement('a');a.href=`/api/v2/file/${encodeURIComponent(src.id)}`;a.click();};li.append(b);}
-    if(src.mime_type==='application/pdf'&&src.review_status!=='reviewed'){
+    if(src.mime_type==='application/pdf'&&!isReviewed(src)){
       const b=document.createElement('button');b.type='button';b.className='ghost small';
       b.textContent=src.page_count?'페이지 준비 이어하기':'PDF 페이지 준비';
       b.disabled=!state.writesEnabled||!!state.pdfTask;
@@ -199,8 +200,14 @@ function renderPicker(){
       const row=document.createElement('label');row.className='picker-row';
       const check=document.createElement('input');check.type='checkbox';check.checked=state.selectedIds.has(item.id);
       check.disabled=!isReviewed(item);check.onchange=()=>{if(check.checked)state.selectedIds.add(item.id);else state.selectedIds.delete(item.id);renderPicker();refreshPrompt();};
-      const title=document.createElement('span');title.textContent=item.title+' · '+(types[item.source_type]||item.source_type)+(isReviewed(item)?(item.review_status==='reviewed_with_issues'?` · 검토 저장 · 주의 ${item.issue_pages}쪽`:' · 검토 저장'):' · 검토 대기');
+      const title=document.createElement('span');title.textContent=item.title+' · '+(types[item.source_type]||item.source_type)+(usesOriginal(item)?' · 원문 사용':isReviewed(item)?(item.review_status==='reviewed_with_issues'?` · 검토 저장 · 주의 ${item.issue_pages}쪽`:' · 검토 저장'):' · 검토 대기');
       row.append(check,title);group.append(row);
+      if(item.processing_mode==='transcript'&&item.can_use_original){
+        const choice=document.createElement('label');choice.className='picker-row';
+        const raw=document.createElement('input');raw.type='checkbox';raw.checked=state.originalIds.has(item.id);
+        raw.onchange=()=>{if(raw.checked)state.originalIds.add(item.id);else{state.originalIds.delete(item.id);if(!['reviewed','reviewed_with_issues'].includes(item.review_status))state.selectedIds.delete(item.id);}renderPicker();refreshPrompt();};
+        choice.append(raw,document.createTextNode('전사본 원문 사용 · 검수 없이'));group.append(choice);
+      }
     }box.append(group);
   }
 }
@@ -216,7 +223,10 @@ function refreshPrompt(){
     '모드: '+mode+', 범위: '+scope,
     '명시적으로 선택한 자료 ID ('+picked.length+'개): '+picked.map(x=>x.id).join(', '),
     '사용자가 체크하지 않은 자료는 본문 근거로 사용하지 마.',
-    'PDF·이미지·전사본은 get_course_verified_text MCP 도구로 검토된 교정본만 읽어. 원본 PDF/미검토 텍스트를 본문 생성 근거로 사용하지 마.',
+    'get_course_generation_source로 자료를 읽어. PDF·PPT·이미지는 검수 저장본, DOCX·HWP·HWPX·일반 TXT/MD는 교정 없이 원문을 사용해.',
+    '검수 없이 원문을 사용하도록 선택한 전사본 ID: '+picked.filter(x=>state.originalIds.has(x.id)).map(x=>x.id).join(', '),
+    '이 전사본은 use_original=true로 읽고, start_course_generation의 original_source_ids에 넣어. 선택하지 않은 전사본은 검수본을 사용해.',
+    '추가 요청사항: '+($('additionalRequests').value.trim()||'없음')+' · start_course_generation의 additional_requests에 그대로 저장해.',
     '교정본의 unresolved와 작업의 review_concerns를 함께 읽고, 불명확한 수치·수식·주장은 확정하지 마. 해당 절에 확인 필요를 표시하고 확인된 내용으로 제작을 계속해.',
     '반드시 목차를 먼저 만들고 save_course_outline로 저장한 뒤에 본문을 작성해.',
     '이후 각 절마다 save_course_part를 호출해 정리본/버전을 자동 저장해. 별도 저장 지시를 요구하지 마.',
@@ -239,7 +249,7 @@ async function refreshOfferings(){
 }
 async function refreshOfferingData(){
   const id=$('course').value;
-  if(id!==state.activeOffering){await pad.reset();rememberDraft();state.activeOffering=id;restoreDraft(id);$('noteVersion').replaceChildren();state.sources=[];state.notes=[];state.selectedIds.clear();
+  if(id!==state.activeOffering){await pad.reset();rememberDraft();state.activeOffering=id;restoreDraft(id);$('noteVersion').replaceChildren();state.sources=[];state.notes=[];state.selectedIds.clear();state.originalIds.clear();
     renderSources();renderNotes();refreshPrompt();$('searchResults').replaceChildren();$('searchQuery').value='';if(!id)$('lectureContext').textContent='과목을 선택하세요.';}
   if(id){const [sources,notes,jobs]=await Promise.all([call(`/api/v2/materials?course_id=${encodeURIComponent(id)}`),call(`/api/v2/notes?course_id=${encodeURIComponent(id)}`),call(`/api/v2/jobs?course_id=${encodeURIComponent(id)}`)]);state.sources=sources;state.notes=notes;state.jobs=jobs;}
   else{state.sources=[];state.notes=[];state.jobs=[];}
@@ -266,7 +276,7 @@ $('noteBold').onclick=()=>insertNote('**','**');
 $('printNote').onclick=()=>{state.showNotePreview=true;renderNotePreview();window.print();};
 $('noteBody').addEventListener('input',()=>{if(state.showNotePreview)renderNotePreview();});
 $('pickerSearch').oninput=renderPicker;$('pickerType').onchange=renderPicker;
-$('clearSelected').onclick=()=>{state.selectedIds.clear();renderPicker();refreshPrompt();};
+$('clearSelected').onclick=()=>{state.selectedIds.clear();state.originalIds.clear();renderPicker();refreshPrompt();};
 $('selectVisible').onclick=()=>{const type=$('pickerType').value,term=$('pickerSearch').value.trim().toLowerCase();for(const x of state.sources){if(isReviewed(x)&&(type==='all'||x.source_type===type)&&(!term||x.title.toLowerCase().includes(term)))state.selectedIds.add(x.id);}renderPicker();refreshPrompt();};
 $('refreshJobs').onclick=()=>run(async()=>{await refreshOfferingData();},'작업 목록을 갱신했습니다.');
 $('jobSelect').onchange=()=>run(async()=>{
@@ -278,10 +288,10 @@ $('copyResume').onclick=()=>run(async()=>{
  const id=$('jobSelect').value;if(!id)throw Error('이어갈 GPT 작업이 없습니다.');
  const p=await call('/api/v2/job?id='+encodeURIComponent(id));
  if(p.course_id!==course()?.id)throw Error('현재 과목의 작업이 아닙니다.');
- const msg=['@에쁠가속기 저장한 작업을 이어서 진행해줘.',`과목 ID: ${p.course_id}`,`작업 ID: ${p.job_id}`,`모드: ${p.mode} / 범위: ${p.scope}`,
+ const msg=['@에쁠가속기 저장한 작업을 이어서 진행해줘.',`과목 ID: ${p.course_id}`,`작업 ID: ${p.job_id}`,`모드: ${p.mode} / 범위: ${p.scope}`,`저장된 추가 요청사항: ${p.additional_requests||'없음'}`,`원문 사용 전사본 ID: ${(p.original_source_ids||[]).join(', ')}`,
   `선택된 교정 자료 ID: ${p.source_ids.join(', ')}`,`저장된 절: ${p.saved_parts.join(', ')||'없음'}`,
   '먼저 get_course_generation_progress로 실제 저장 상태를 다시 확인하고, 저장된 목차와 교정본을 사용해 빠진 절만 save_course_part로 저장해.',
-  '기존 절을 덮어쓰거나 미검토 원문을 생성 근거로 사용하지 마. 수정 충돌이 있으면 멈추고 보고해.'].join('\n');
+  'get_course_generation_progress의 파일 사용 방식과 추가 요청사항을 유지해. 기존 절을 덮어쓰지 마. 수정 충돌이 있으면 멈추고 보고해.'].join('\n');
  await navigator.clipboard.writeText(msg);
  $('jobProgress').textContent=`${p.status} · 목차 ${p.outline.length}절 · 저장 ${p.saved_parts.length}절 · 요청문 복사 완료`;
 },'작업 이어하기 요청문을 복사했습니다.');
@@ -339,8 +349,8 @@ function applyWriteLock(){
  document.querySelectorAll('#course-form button,#deleteCourse,#source-form button,#note-form button,#noteNew,#packUpload,#casioForm button').forEach(el=>el.disabled=!state.writesEnabled);
  pad.setWritable(state.writesEnabled);
 }
-$('globalCourse').onchange=()=>run(async()=>{const target=$('globalCourse').value;$('course').value=target;state.selectedIds.clear();await refreshOfferings();});$('course').onchange=()=>run(async()=>{$('globalCourse').value=$('course').value;state.selectedIds.clear();await refreshOfferings();});$('offering').onchange=()=>run(refreshOfferingData);
-$('mode').onchange=refreshPrompt;$('scope').oninput=refreshPrompt;
+$('globalCourse').onchange=()=>run(async()=>{const target=$('globalCourse').value;$('course').value=target;state.selectedIds.clear();state.originalIds.clear();await refreshOfferings();});$('course').onchange=()=>run(async()=>{$('globalCourse').value=$('course').value;state.selectedIds.clear();state.originalIds.clear();await refreshOfferings();});$('offering').onchange=()=>run(refreshOfferingData);
+$('mode').onchange=refreshPrompt;$('scope').oninput=refreshPrompt;$('additionalRequests').oninput=()=>{refreshPrompt();rememberDraft();};
 $('course-form').onsubmit=e=>{e.preventDefault();run(async()=>{const r=await call('/api/courses',json({name:$('courseName').value,characteristics:$('characteristics').value}));$('course-form').reset();await refreshCourses(r.id);});};
 $('deleteCourse').onclick=()=>{
  const current=course();if(!current)return fail('삭제할 과목을 선택하세요.');

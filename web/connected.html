@@ -119,6 +119,7 @@
               <div class="card-heading"><div><span class="step-number">01</span><h2>작업 설정</h2></div><p>AI는 ChatGPT에서 실행</p></div>
               <label class="field">제작 모드<select id="mode"><option value="detailed_note">상세 정리본</option><option value="outline">목차·단원 매핑</option><option value="subnote">서브노트</option><option value="exam_paper">시험형 문제집</option><option value="exam_cram">시험 직전 압축</option><option value="exam_trends">기출 경향 분석</option><option value="transcript_fix">전사본 교정</option><option value="errors">오답노트</option><option value="calculator">CASIO 코드 설계</option></select></label>
               <label class="field">범위<input id="scope" value="5주차" maxlength="200"></label>
+              <label class="field">추가 요청사항 (선택)<textarea id="additionalRequests" rows="3" maxlength="4000" placeholder="예: 수식 유도 과정을 자세히, 비교표 포함, 시험 범위 밖 내용 제외"></textarea></label>
               <button class="primary action-button" id="copyPrompt" type="button">GPT 작업 요청문 복사</button>
               <p class="hint">GPT 제작은 ChatGPT와의 연결이 필요해요. 검토를 저장하면 제작할 수 있어요. 불명확한 부분은 주의사항으로 함께 남아요.</p>
             </section>
@@ -129,7 +130,7 @@
               <label class="field">유형<select id="pickerType"><option value="all">모든 자료</option><option value="lecture_slides">강의자료</option><option value="transcript">전사본</option><option value="textbook">교재·참고</option><option value="past_exam">기출</option><option value="other">기타</option></select></label>
               <div class="picker-actions"><button id="selectVisible" class="ghost small" type="button">표시된 자료 선택</button><button id="clearSelected" class="ghost small" type="button">전체 해제</button></div>
               <div id="sourcePicker" class="picker-list" role="group" aria-label="주차별·개별 자료 선택"></div>
-              <p class="hint">주차·기출 연도별로 선택하고 파일별 해제 가능. 검증 완료 자료만 선택할 수 있습니다.</p>
+              <p class="hint">PDF·PPT·이미지는 검수본, 일반 문서는 원문 사용. 전사본은 파일별로 원문 사용을 선택할 수 있어요.</p>
             </section>
             <section class="card workspace-card prompt-card">
               <div class="card-heading"><div><span class="step-number">03</span><h2>요청문 미리보기</h2></div><p>선택한 자료만 사용</p></div>

@@ -1,6 +1,7 @@
 /** v0.9 course-only library. Source metadata is author-entered, not inferred.
  * OCR inference is performed by ChatGPT via tools, not a paid server-side model.
  */
+import {extractOriginal,unzip} from './office-original.mjs';
 const fail=(code)=>{const e=new Error(code);e.code=code;throw e;};
 const uid=()=>crypto.randomUUID();
 const clean=(value,max)=>{if(typeof value!=='string'||!value.trim()||value.length>max)fail('BAD_REQUEST');return value.trim();};
@@ -9,6 +10,9 @@ const FILE_TYPES={'.txt':'text/plain','.md':'text/markdown','.pdf':'application/
 const OLE_HEADER=[208,207,17,224,161,177,26,225];
 const isZip=data=>data[0]===80&&data[1]===75&&data[2]===3&&data[3]===4;
 const isOle=data=>OLE_HEADER.every((value,index)=>data[index]===value);
+const VISUAL=new Set(['application/pdf','image/png','image/jpeg','application/vnd.openxmlformats-officedocument.presentationml.presentation','application/vnd.ms-powerpoint']);
+const DIRECT=new Set(['text/plain','text/markdown','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/x-hwp','application/vnd.hancom.hwpx']);
+const useOriginal=m=>DIRECT.has(m.mime_type)&&m.source_type!=='transcript';
 function metadata(type,weeks=[],examYear=null){
  if(!TYPES.has(type)||!Array.isArray(weeks)||weeks.length>30||weeks.some(x=>!Number.isInteger(x)||x<1||x>30))fail('BAD_REQUEST');
  if(type==='past_exam'){
@@ -48,7 +52,7 @@ export function createCourseLibrary(db,bucket){
   const row=await one("SELECT * FROM course_generation_jobs WHERE id=?",id);
   if(!row)fail('NOT_FOUND');await access(user,row.course_id,true);if(row.user_id!==user)fail('FORBIDDEN');return row;
  }
- const reviewState=m=>m.page_count>0&&m.recorded_pages===m.page_count&&(m.mime_type!=='application/pdf'||m.prepared_pages===m.page_count)
+ const reviewState=m=>useOriginal(m)?'original_ready':m.page_count>0&&m.recorded_pages===m.page_count&&(m.mime_type!=='application/pdf'||m.prepared_pages===m.page_count)
    ?(m.issue_pages?'reviewed_with_issues':'reviewed'):'pending_review';
  async function reviewSummary(m){
   const [pages,images]=await Promise.all([
@@ -61,13 +65,29 @@ export function createCourseLibrary(db,bucket){
   const review_status=reviewState({...m,recorded_pages:recorded.length,issue_pages:concerns.length,prepared_pages:images.length});
   return {review_status,available_for_generation:review_status!=='pending_review',recorded_pages:recorded.map(p=>p.page_num),review_concerns:concerns};
  }
- async function sourceConcerns(user,ids){
+ async function originalContent(m){
+  if(m.original_text!==null&&m.original_text!==undefined){if(!m.original_text.trim())fail('ORIGINAL_UNREADABLE');return m.original_text;}
+  if(!m.storage_key||!bucket?.get)fail('ORIGINAL_UNREADABLE');
+  const file=await bucket.get(m.storage_key);if(!file)fail('NOT_FOUND');
+  const parsed=extractOriginal(new Uint8Array(await new Response(file.body).arrayBuffer()),m.mime_type);
+  if(!parsed.text)fail('ORIGINAL_UNREADABLE');return parsed.text;
+ }
+ async function sourceConcerns(user,ids,originalIds=[]){
   const concerns=[];
-  for(const id of ids){const m=await source(user,id);const review=await reviewSummary(m);if(!review.available_for_generation)fail('REVIEW_INCOMPLETE');concerns.push(...review.review_concerns);}
+  for(const id of ids){const m=await source(user,id);if(originalIds.includes(id)&&m.source_type!=='transcript')fail('BAD_REQUEST');
+   if(useOriginal(m)||originalIds.includes(id)){
+    if(!DIRECT.has(m.mime_type)||(!useOriginal(m)&&m.source_type!=='transcript'))fail('BAD_REQUEST');
+    await originalContent(m);
+    if(m.source_type==='transcript')concerns.push({material_id:id,title:m.title,page_num:1,unresolved:['사용자가 검수 없이 전사본 원문 사용을 선택했습니다. 전사 오류가 포함될 수 있습니다.'],evidence_ids:[]});
+    else if(!['text/plain','text/markdown'].includes(m.mime_type))concerns.push({material_id:id,title:m.title,page_num:1,unresolved:['교정 없이 원문 본문을 사용합니다. 이미지·수식·배치 등 텍스트 밖의 개체는 원본 파일에서 추가 확인이 필요합니다.'],evidence_ids:[]});
+    continue;
+   }
+   const review=await reviewSummary(m);if(!review.available_for_generation)fail('REVIEW_INCOMPLETE');concerns.push(...review.review_concerns);
+  }
   return concerns;
  }
  async function reviewNotice(user,run){
-  const concerns=await sourceConcerns(user,JSON.parse(run.source_ids_json));
+  const concerns=await sourceConcerns(user,JSON.parse(run.source_ids_json),JSON.parse(run.generation_options_json||'{}').original_source_ids||[]);
   if(!concerns.length)return '';
   const escape=s=>String(s).replace(/[\\`*_{}\[\]<>#|]/g,'\\$&').replace(/[\r\n]+/g,' ');
   return '## 자료 검토 주의사항\n\n다음 항목은 확인이 필요합니다. 해당 수치·수식·주장을 확정된 사실로 사용하지 마세요.\n\n'+
@@ -77,7 +97,7 @@ export function createCourseLibrary(db,bucket){
   async listMaterials(user,{course_id,type='all'}={}){
    await access(user,course_id);
    const rows=await all("SELECT id,course_id,title,source_type,weeks_json,exam_year,original_filename AS file_name,mime_type,provenance,review_status,page_count,created_at,(SELECT count(*) FROM course_material_page_images p WHERE p.material_id=course_materials.id) AS prepared_pages,(SELECT count(*) FROM course_material_pages p WHERE p.material_id=course_materials.id AND p.page_num BETWEEN 1 AND course_materials.page_count) AS recorded_pages,(SELECT count(*) FROM course_material_pages p WHERE p.material_id=course_materials.id AND p.page_num BETWEEN 1 AND course_materials.page_count AND json_array_length(p.unresolved_json)>0) AS issue_pages FROM course_materials WHERE course_id=? ORDER BY created_at DESC,id DESC LIMIT 400",course_id);
-   return rows.map(({weeks_json,...r})=>{const review_status=reviewState(r);return {...r,review_status,available_for_generation:review_status!=='pending_review',weeks:JSON.parse(weeks_json||'[]'),extract_status:review_status!=='pending_review'?'ready':'pending'};}).filter(r=>type==='all'||r.source_type===type);
+   return rows.map(({weeks_json,...r})=>{const review_status=reviewState(r);return {...r,review_status,processing_mode:useOriginal(r)?'original':r.source_type==='transcript'&&!VISUAL.has(r.mime_type)?'transcript':'review',can_use_original:DIRECT.has(r.mime_type),available_for_generation:review_status!=='pending_review',weeks:JSON.parse(weeks_json||'[]'),extract_status:review_status!=='pending_review'?'ready':'pending'};}).filter(r=>type==='all'||r.source_type===type);
   },
   async upload(user,{course_id,title,source_type,weeks=[],exam_year=null,filename,provenance='',buffer}={}){
    await access(user,course_id,true);
@@ -101,9 +121,10 @@ export function createCourseLibrary(db,bucket){
    const id=uid(),key='course-assets/'+course_id+'/'+id;
    await bucket.put(key,data,{httpMetadata:{contentType:mime}});
    try{
-     const originalText=['text/plain','text/markdown'].includes(mime)?new TextDecoder('utf-8',{fatal:true}).decode(data):null;
+     const parsed=DIRECT.has(mime)||mime.endsWith('presentationml.presentation')?extractOriginal(data,mime):{};
+     const originalText=['text/plain','text/markdown'].includes(mime)?new TextDecoder('utf-8',{fatal:true}).decode(data):parsed.text??null;
      await q("INSERT INTO course_materials(id,course_id,title,source_type,weeks_json,exam_year,original_filename,mime_type,provenance,storage_key,sha256,original_text,review_status,page_count) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'pending_review',?)",
-       id,course_id,name,source_type,JSON.stringify(meta.weeks),meta.examYear,file,mime,provenance.trim(),key,hash,originalText,mime==='application/pdf'?0:1).run();
+       id,course_id,name,source_type,JSON.stringify(meta.weeks),meta.examYear,file,mime,provenance.trim(),key,hash,originalText,mime==='application/pdf'?0:parsed.pages?.length||1).run();
    }catch(e){await bucket.delete(key).catch(()=>{});throw e}
    return {id,review_status:'pending_review'};
   },
@@ -191,6 +212,22 @@ export function createCourseLibrary(db,bucket){
   async getPageImage(user,{material_id,page_num=1}={}){
    const m=await source(user,material_id);
    if(!Number.isInteger(page_num)||page_num<1||!bucket?.get)fail('BAD_REQUEST');
+   if(m.mime_type.endsWith('presentationml.presentation')){
+    if(page_num>m.page_count)fail('BAD_REQUEST');
+    const original=await bucket.get(m.storage_key);if(!original)fail('NOT_FOUND');
+    const files=unzip(new Uint8Array(await new Response(original.body).arrayBuffer()));
+    const slide=JSON.parse(await originalContent(m))[page_num-1];
+    const rel=files.get(slide.name.replace('slides/','slides/_rels/')+'.rels');
+    const xml=rel?new TextDecoder().decode(rel):'',images=[];let size=0;
+    for(const match of xml.matchAll(/<Relationship\b[^>]*\bTarget=["']([^"']+)["'][^>]*>/g)){
+     const target=match[1],name='ppt/'+target.replace(/^\.\.\//,'');
+     if(!/^ppt\/media\/[^/]+\.(png|jpe?g)$/i.test(name))continue;
+     const bytes=files.get(name);if(!bytes)continue;size+=bytes.length;if(size>4*1024*1024||images.length>=8)fail('BAD_FILE');
+     let binary='';for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));
+     images.push({page_num,mimeType:/\.png$/i.test(name)?'image/png':'image/jpeg',data:btoa(binary)});
+    }
+    return {__mcpImages:true,images,notice:'PPTX 슬라이드에 포함된 원본 그림입니다. 전체 슬라이드 렌더링은 아닙니다. get_course_original_text의 해당 슬라이드 원문도 읽고, 미지원 도형·수식·배치는 unresolved에 남기세요.'};
+   }
    const stored=await one("SELECT storage_key,mime_type FROM course_material_page_images WHERE material_id=? AND page_num=?",material_id,page_num);
    const page=stored||(page_num===1&&['image/jpeg','image/png'].includes(m.mime_type)
      ?{storage_key:m.storage_key,mime_type:m.mime_type}:null);
@@ -207,6 +244,7 @@ export function createCourseLibrary(db,bucket){
    const images=[];
    for(let number=start_page;number<start_page+count;number++){
     const image=await this.getPageImage(user,{material_id,page_num:number});
+    if(image.__mcpImages){images.push(...image.images);continue;}
     images.push({page_num:number,mimeType:image.mimeType,data:image.data});
    }
    return {__mcpImages:true,material_id,images};
@@ -216,11 +254,12 @@ export function createCourseLibrary(db,bucket){
    if(!Number.isInteger(page_num)||page_num<1||page_num>m.page_count||!Number.isInteger(offset)||offset<0||!Number.isInteger(limit)||limit<1||limit>40000)fail('BAD_REQUEST');
    const page=m.mime_type==='application/pdf'
      ?await one("SELECT extracted_text FROM course_material_page_images WHERE material_id=? AND page_num=?",material_id,page_num):null;
-   const original=m.mime_type==='application/pdf'?(page?.extracted_text||''):(m.original_text||'');
+   let original=m.mime_type==='application/pdf'?(page?.extracted_text||''):await originalContent(m);
+   if(m.mime_type.endsWith('presentationml.presentation'))original=JSON.parse(original)[page_num-1]?.text||'';
    const chunk=original.slice(offset,offset+limit),next_offset=offset+chunk.length<original.length?offset+chunk.length:null;
    return {id:m.id,title:m.title,mime_type:m.mime_type,provenance:m.provenance,page_count:m.page_count,
     page_num,original_text:m.mime_type==='application/pdf'?null:chunk,
-    pages:m.mime_type==='application/pdf'?[{page_num,extracted_text:chunk}]:[],total_chars:original.length,next_offset,review_status:m.review_status};
+    pages:m.mime_type==='application/pdf'?[{page_num,extracted_text:chunk}]:[],limitations:m.mime_type.endsWith('presentationml.presentation')?['슬라이드 원문 텍스트와 삽입 그림을 제공합니다. 전체 배치·도형·수식의 렌더링 검증은 별도 PDF가 필요하며 확인하지 못한 부분은 unresolved에 저장하세요.']:[],total_chars:original.length,next_offset,review_status:m.review_status};
   },
   async saveReview(user,{material_id,page_num,raw_text,corrected_text,evidence_ids=[],unresolved=[]}={}){
    const m=await source(user,material_id,true);
@@ -244,6 +283,7 @@ export function createCourseLibrary(db,bucket){
   },
   async verifiedText(user,{material_id,page_num=1,offset=0,limit=16000}={}){
    const m=await source(user,material_id);
+   if(useOriginal(m))return this.generationSource(user,{material_id,page_num,offset,limit});
    if(!Number.isInteger(page_num)||page_num<1||page_num>m.page_count||!Number.isInteger(offset)||offset<0||!Number.isInteger(limit)||limit<1||limit>40000)fail('BAD_REQUEST');
    const page=await one("SELECT corrected_text,evidence_json,unresolved_json FROM course_material_pages WHERE material_id=? AND page_num=?",material_id,page_num);
    if(!page)fail('REVIEW_INCOMPLETE');
@@ -251,6 +291,16 @@ export function createCourseLibrary(db,bucket){
    return {material_id,title:m.title,provenance:'corrected_ocr_or_transcript_only',page_count:m.page_count,
     pages:[{page_num,corrected_text:chunk,evidence_ids:JSON.parse(page.evidence_json||'[]'),unresolved:JSON.parse(page.unresolved_json||'[]')}],
     ...await reviewSummary(m),total_chars:text.length,next_offset:offset+chunk.length<text.length?offset+chunk.length:null};
+  },
+  async generationSource(user,{material_id,page_num=1,offset=0,limit=16000,use_original=false}={}){
+   const m=await source(user,material_id);
+   if(typeof use_original!=='boolean')fail('BAD_REQUEST');
+   if(useOriginal(m)||use_original){
+    if(!DIRECT.has(m.mime_type)||(!useOriginal(m)&&m.source_type!=='transcript'))fail('BAD_REQUEST');
+    const text=await this.getOriginalText(user,{material_id,page_num,offset,limit});
+    return {...text,provenance:'uncorrected_original',used_original:true,review_concerns:await sourceConcerns(user,[material_id],use_original?[material_id]:[])};
+   }
+   return {...await this.verifiedText(user,{material_id,page_num,offset,limit}),used_original:false};
   },
   async search(user,{course_id,query}={}){
    await access(user,course_id);
@@ -318,12 +368,14 @@ export function createCourseLibrary(db,bucket){
    if(id){const prev=await this.getCasio(user,{id});if(prev.course_id!==course_id)fail('FORBIDDEN');await q("UPDATE course_casio_projects SET title=?,blueprint_json=?,program_text=?,manual_text=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",name,blueprint_json,program_text,manual_text,id).run();return {id}}
    const key=uid();await q("INSERT INTO course_casio_projects(id,course_id,title,blueprint_json,program_text,manual_text) VALUES(?,?,?,?,?,?)",key,course_id,name,blueprint_json,program_text,manual_text).run();return {id:key};
   },
-  async startJob(user,{course_id,mode,scope='전체',source_ids=[]}={}){
+  async startJob(user,{course_id,mode,scope='전체',source_ids=[],original_source_ids=[],additional_requests=''}={}){
    await access(user,course_id,true);
    if(!['outline','detailed_note','subnote','exam_paper','exam_cram','exam_trends','transcript_fix','errors','calculator'].includes(mode)||!Array.isArray(source_ids)||!source_ids.length||source_ids.length>80||source_ids.length!==new Set(source_ids).size)fail('BAD_REQUEST');
    for(const id of source_ids){const s=await source(user,id);if(s.course_id!==course_id)fail('FORBIDDEN')}
-   const review_concerns=await sourceConcerns(user,source_ids);
-   const id=uid();await q("INSERT INTO course_generation_jobs(id,course_id,user_id,mode,scope,source_ids_json,status) VALUES(?,?,?,?,?,?,'awaiting_outline')",id,course_id,user,mode,String(scope).slice(0,300),JSON.stringify(source_ids)).run();return {id,status:'awaiting_outline',review_concerns};
+   if(!Array.isArray(original_source_ids)||original_source_ids.length>80||new Set(original_source_ids).size!==original_source_ids.length||original_source_ids.some(id=>!source_ids.includes(id))||typeof additional_requests!=='string'||additional_requests.length>4000)fail('BAD_REQUEST');
+   const review_concerns=await sourceConcerns(user,source_ids,original_source_ids);
+   const options={original_source_ids,additional_requests:additional_requests.trim()};
+   const id=uid();await q("INSERT INTO course_generation_jobs(id,course_id,user_id,mode,scope,source_ids_json,generation_options_json,status) VALUES(?,?,?,?,?,?,?,'awaiting_outline')",id,course_id,user,mode,String(scope).slice(0,300),JSON.stringify(source_ids),JSON.stringify(options)).run();return {id,status:'awaiting_outline',review_concerns,...options};
   },
   async saveOutline(user,{job_id,sections=[]}={}){
    const run=await job(user,job_id);
@@ -387,7 +439,7 @@ export function createCourseLibrary(db,bucket){
    const j=await job(user,job_id);
    const parts=await all("SELECT section_index FROM course_generation_parts WHERE job_id=? ORDER BY section_index",job_id);
    return {job_id:j.id,course_id:j.course_id,mode:j.mode,scope:j.scope,status:j.status,document_id:j.document_id,
-    source_ids:JSON.parse(j.source_ids_json),review_concerns:await sourceConcerns(user,JSON.parse(j.source_ids_json)),outline:JSON.parse(j.outline_json),saved_parts:parts.map(x=>x.section_index)};
+    source_ids:JSON.parse(j.source_ids_json),...JSON.parse(j.generation_options_json||'{}'),review_concerns:await sourceConcerns(user,JSON.parse(j.source_ids_json),JSON.parse(j.generation_options_json||'{}').original_source_ids||[]),outline:JSON.parse(j.outline_json),saved_parts:parts.map(x=>x.section_index)};
   },
   async getJob(user,{id}={}){return this.getJobProgress(user,{job_id:id})},
   async getFile(user,{id}={}){const s=await source(user,id);if(!s.storage_key||!bucket?.get)fail('NOT_FOUND');const file=await bucket.get(s.storage_key);if(!file)fail('NOT_FOUND');return new Response(file.body,{headers:{'content-type':s.mime_type,'content-disposition':"attachment; filename*=UTF-8''"+encodeURIComponent(s.original_filename),'cache-control':'no-store'}})}

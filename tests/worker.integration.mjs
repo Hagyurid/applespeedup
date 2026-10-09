@@ -3,6 +3,7 @@
  * No persistence or network calls: each run starts empty and is disposed afterward.
  */
 import assert from 'node:assert/strict';
+import {documents} from './helpers/document-fixtures.mjs';
 import {createRequire} from 'node:module';
 import {readFileSync,readdirSync} from 'node:fs';
 import {resolve} from 'node:path';
@@ -119,6 +120,14 @@ try{
     const previous=await (await request('/api/v2/note-version?id='+job.id+'&revision=1')).json();
     assert.match(previous.content_markdown,/작성 중/);
     assert.equal((await request('/api/v2/note-versions?id='+job.id,{headers:bob})).status,404);
+  });
+  await check('original DOCX, transcript bypass and extra requests survive the built Worker',async()=>{
+    const doc=await (await request('/api/v2/upload',{method:'POST',headers:{...alice,'content-type':'application/octet-stream','x-course-id':c.id,'x-source-type':'other','x-title':encodeURIComponent('워드 원문'),'x-filename':'original.docx'},body:Buffer.from(documents.docx,'base64')})).json();
+    const invoke=async(name,args)=>{const r=await request('/mcp',{method:'POST',headers:{...alice,accept:'application/json, text/event-stream'},json:{jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}}});const result=(await r.json()).result;assert.equal(result.isError,false,JSON.stringify(result));return JSON.parse(result.content[0].text);};
+    const raw=await invoke('get_course_generation_source',{material_id:doc.id});assert.equal(raw.original_text,'교정하지 않은 DOCX 원문 123');assert.equal(raw.used_original,true);
+    const transcript=await (await request('/api/v2/text',{method:'POST',json:{course_id:c.id,title:'원문 전사',content:'그대로',source_type:'transcript'}})).json();
+    const job=await invoke('start_course_generation',{course_id:c.id,mode:'detailed_note',source_ids:[doc.id,transcript.id],original_source_ids:[transcript.id],additional_requests:'표 포함'});
+    const progress=await invoke('get_course_generation_progress',{job_id:job.id});assert.equal(progress.additional_requests,'표 포함');assert.deepEqual(progress.original_source_ids,[transcript.id]);
   });
   console.log(`Worker integration: ${checks} checks passed. Live login and browser interaction remain unverified.`);
 }finally{await mf.dispose();}

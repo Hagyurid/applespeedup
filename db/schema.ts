@@ -181,6 +181,7 @@ export const courseGenerationJobs=sqliteTable('course_generation_jobs',{
  userId:text('user_id').notNull().references(()=>users.id),
  mode:text('mode').notNull(),scope:text('scope').notNull().default('전체'),
  sourceIdsJson:text('source_ids_json').notNull().default('[]'),
+ generationOptionsJson:text('generation_options_json').notNull().default('{}'),
  outlineJson:text('outline_json').notNull().default('[]'),
  status:text('status').notNull().default('awaiting_outline'),
  documentId:text('document_id').references(()=>courseDocuments.id),

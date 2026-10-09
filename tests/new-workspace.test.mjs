@@ -22,7 +22,7 @@ test('Source picker only adds reviewed items and sends explicit source ID list',
  assert.match(js,/reviewed_with_issues/);
  assert.match(js,/state\.selectedIds\.clear\(\)/);
  assert.match(js,/selectedSources\(\)\.filter\(isReviewed\)/);
- assert.match(js,/get_course_verified_text/);
+ assert.match(js,/get_course_generation_source/);
  assert.match(js,/save_course_outline/);
  assert.match(js,/save_course_part/);
 });

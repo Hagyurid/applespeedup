@@ -326,3 +326,5 @@ INSERT INTO course_document_versions(document_id,revision,title,content_markdown
 SELECT id,revision,title,content_markdown,updated_at FROM course_documents;
 --> statement-breakpoint
 UPDATE course_generation_jobs SET document_revision=COALESCE((SELECT revision FROM course_documents WHERE id=document_id),0);
+
+ALTER TABLE course_generation_jobs ADD COLUMN generation_options_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(generation_options_json));
