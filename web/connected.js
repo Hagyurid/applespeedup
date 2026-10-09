@@ -118,8 +118,9 @@ function renderSources(){
   for(const src of state.sources){
     const li=document.createElement('li'),text=document.createElement('span');
     const loc=src.source_type==='past_exam'?(src.exam_year?`${src.exam_year}년`:'연도 미지정'):(src.weeks?.length?`${src.weeks.join(', ')}주차`:'주차 미지정');
+    const needsConversion=['application/x-hwp','application/vnd.hancom.hwpx','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.openxmlformats-officedocument.presentationml.presentation'].includes(src.mime_type);
     const review=src.review_status==='reviewed'?'교정 완료':src.mime_type==='application/pdf'
-      ?`페이지 준비 ${src.prepared_pages||0}/${src.page_count||'?'} · GPT 검토 대기`:'GPT 교정 대기';
+      ?`페이지 준비 ${src.prepared_pages||0}/${src.page_count||'?'} · GPT 검토 대기`:needsConversion?'원본 보관 · PDF/TXT 변환 필요':'GPT 교정 대기';
     text.textContent=`${src.title} · ${types[src.source_type]||src.source_type} · ${loc} · ${review}`;li.append(text);
     if(src.file_name){const b=document.createElement('button');b.type='button';b.className='ghost small';b.textContent='원본 다운로드';b.onclick=()=>{const a=document.createElement('a');a.href=`/api/v2/file/${encodeURIComponent(src.id)}`;a.click();};li.append(b);}
     if(src.mime_type==='application/pdf'&&src.review_status!=='reviewed'){
@@ -128,7 +129,7 @@ function renderSources(){
       b.disabled=!state.writesEnabled||!!state.pdfTask;
       b.onclick=()=>{void prepareStoredPdf(src.id).catch(e=>fail(e.message));};li.append(b);
     }
-    if(!isReviewed(src)){
+    if(!isReviewed(src)&&!needsConversion){
       const button=document.createElement('button');button.type='button';button.className='ghost small';
       button.textContent='GPT 원문 검토 요청';
       button.onclick=async()=>{
