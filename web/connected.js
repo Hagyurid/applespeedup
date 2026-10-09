@@ -229,6 +229,7 @@ function refreshPrompt(){
     '교정본의 unresolved와 작업의 review_concerns를 함께 읽고, 불명확한 수치·수식·주장은 확정하지 마. 해당 절에 확인 필요를 표시하고 확인된 내용으로 제작을 계속해.',
     '반드시 목차를 먼저 만들고 save_course_outline로 저장한 뒤에 본문을 작성해.',
     ...(mode==='exam_paper'?['목차 저장 후 문제·정답·해설을 구조화하고 save_course_problem_pack에 job_id, course_id, title, pack을 전달해 바로 저장해. pack은 solvepad.problemPack.v5 형식이며 questions마다 고유 id, promptMd, answer, solution을 포함해. 문서형 정리본은 만들지 마.']:mode==='calculator'?['목차 저장 후 save_course_casio_project에 job_id, course_id, title, blueprint_json, program_text, manual_text를 전달해 바로 저장해. 정리본은 만들지 마.']:['각 절마다 save_course_part로 정리본을 저장해.']),
+    ...(mode==='exam_paper'?['문제팩의 promptMd, choices[].text, answer.displayMd, solution, hints[]에는 Markdown+LaTeX를 사용해. 수식은 $...$ 또는 별도 줄 $$...$$로 감싸고, 코드 표시로 감싸지 마. answer.value와 acceptable은 자동 채점용 일반 문자열로 따로 저장해. JSON의 LaTeX 역슬래시는 올바르게 이스케이프하고 아래첨자 전체를 _{...}로 묶어. 긴 유도식은 별도 줄 수식으로 나눠.']:[]),
     '수식은 인라인 $...$ 또는 별도 줄의 $$...$$ LaTeX로 작성해. 아래첨자는 _{...}, 분수는 \\frac{...}{...}를 사용하고 수식을 코드 표시로 감싸지 마.',
     '자료 ID·검수 과정·과목 메타데이터를 본문에 길게 나열하지 마. 정리본의 확인 필요 항목은 핵심만 1~3줄로 요약하고 없으면 생략해. 문제팩과 CASIO 코드·설명서에는 검수 주의사항을 넣지 마.',
     '파일의 사용자 지정 제목, 주차, 기출 연도는 원본 이름/OCR에서 유추해 덮어쓰지 마.',

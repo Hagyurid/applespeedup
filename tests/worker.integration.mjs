@@ -155,9 +155,9 @@ try{
       const job=await invoke('start_course_generation',{course_id:c.id,mode,source_ids:[source.id]});
       await invoke('save_course_outline',{job_id:job.id,sections:[{title:'문제 또는 코드'}]});
       const args={course_id:c.id,job_id:job.id,title:'전용 결과'};
-      if(mode==='exam_paper')args.pack={questions:[{id:'q1',promptMd:'PV=nRT',answer:'기체 법칙',solution:'이상기체 가정'}]};else args.program_text='1+1';
+      if(mode==='exam_paper')args.pack={questions:[{id:'q1',promptMd:'기체 압력 $P_{1}$\n\n$$\nP=\\frac{nRT}{V}\n$$',choices:[{value:'1',text:'$P_{1}$'}],answer:{value:'1',displayMd:'$P=\\frac{nRT}{V}$'},solution:'$$\nV=\\frac{nRT}{P}\n$$',hints:['$T_{1}$을 확인하세요.']}]};else args.program_text='1+1';
       const tool=mode==='exam_paper'?'save_course_problem_pack':'save_course_casio_project';
-      const saved=await invoke(tool,args);const retried=await invoke(tool,args);assert.equal(saved.id,retried.id);
+      const saved=await invoke(tool,args);if(mode==='exam_paper'){const stored=await (await request('/api/v2/pack?id='+saved.id)).json();assert.deepEqual(stored.pack.questions,args.pack.questions);}const retried=await invoke(tool,args);assert.equal(saved.id,retried.id);
       const progress=await invoke('get_course_generation_progress',{job_id:job.id});assert.equal(progress.status,'complete');assert.equal(progress.document_id,null);assert.equal(progress.output_id,saved.id);
       const notes=await (await request('/api/v2/notes?course_id='+c.id)).json();assert.equal(notes.some(n=>n.id===job.id),false);
     }

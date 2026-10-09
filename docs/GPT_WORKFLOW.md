@@ -53,3 +53,5 @@
 ## 전용 결과물 저장
 
 `exam_paper`는 목차 저장 후 `save_course_problem_pack(job_id, course_id, title, pack)`으로 직접 저장한다. `calculator`는 `save_course_casio_project(job_id, course_id, title, blueprint_json, program_text, manual_text)`으로 직접 저장한다. 두 모드는 정리본을 만들지 않으며 전용 결과물의 저장 성공 후에만 완료된다. 동일 작업의 재시도는 같은 ID와 같은 내용을 사용한다. 문서형 모드만 `save_course_part`를 사용한다. 정리본 수식은 LaTeX로 쓰고 확인 필요 항목은 최대 3줄로 줄인다. 자료 ID·검수 과정은 본문에 나열하지 않는다.
+
+문제팩의 문제·선택지·표시 정답·힌트·해설은 Markdown+LaTeX로 저장한다. `answer.displayMd`는 수식 표시용, `answer.value/acceptable`은 자동 채점용 일반 문자열이다. JSON에서 역슬래시를 올바르게 이스케이프한다. 기존 문제팩을 자동 변환하거나 다시 저장하지 않는다.

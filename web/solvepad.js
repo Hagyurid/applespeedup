@@ -1,3 +1,4 @@
+import {renderNoteMarkdown,noteMathReady} from './note-render.js';
 /** Native course-owned SolvePad. The server stores each user's answer and ink. */
 const $=id=>document.getElementById(id);
 const asText=value=>String(value??'');
@@ -14,26 +15,10 @@ function solutionText(q){
   return [['핵심 개념',s.concepts],['풀이',s.actualSolution],['주의',s.cautions],['팁',s.tips]]
     .filter(([,v])=>v).map(([name,v])=>name+'\n'+(Array.isArray(v)?v.join('\n'):asText(v))).join('\n\n')||'등록된 해설이 없습니다.';
 }
-const math=import('/vendor/katex/katex.mjs').catch(()=>null);
 async function renderPrompt(target,input){
-  target.replaceChildren();
-  const lib=await math;
-  const text=asText(input);
-  for(const [i,line] of text.split(/\n/).entries()){
-    if(i)target.append(document.createElement('br'));
-    const regex=/(\$\$[\s\S]*?\$\$|\$[^$\n]+?\$)/g;
-    let start=0,match;
-    while((match=regex.exec(line))){
-      target.append(document.createTextNode(line.slice(start,match.index)));
-      const span=document.createElement('span');
-      if(lib){
-        try{lib.render(match[0].replace(/^\$\$?|\$\$?$/g,''),span,{throwOnError:false,trust:false,displayMode:match[0].startsWith('$$')});}
-        catch{span.textContent=match[0]}
-      }else span.textContent=match[0];
-      target.append(span);start=match.index+match[0].length;
-    }
-    target.append(document.createTextNode(line.slice(start)));
-  }
+  target.classList.add('solve-math-content');
+  renderNoteMarkdown(target,asText(input),{compactIntroduction:false});
+  await noteMathReady();
 }
 export function createSolvePad({call,json,notify,onError}){
   const canvas=$('solveInk'),ctx=canvas.getContext('2d');
@@ -163,7 +148,7 @@ export function createSolvePad({call,json,notify,onError}){
       const value=asText(choice.value??choice.id??index+1),label=document.createElement('label'),radio=document.createElement('input');
       radio.type='radio';radio.name='solveChoice';radio.value=value;radio.checked=s.answer===value;radio.disabled=!s.writable;
       radio.onchange=()=>{$('solveAnswer').value=value;markDirty()};
-      label.append(radio,document.createTextNode(asText(choice.text??choice.label??choice)));choices.append(label);
+      const content=document.createElement('span');label.append(radio,content);choices.append(label);void renderPrompt(content,choice.text??choice.label??choice);
     });
     $('solveAnswer').value=s.answer;
     $('solveBookmark').textContent=s.bookmarked?'★ 북마크 해제':'☆ 북마크';
@@ -215,12 +200,12 @@ export function createSolvePad({call,json,notify,onError}){
     const hints=current().hints||[];
     const box=$('solveReveal');box.hidden=false;box.replaceChildren();
     const h=document.createElement('h3');h.textContent='힌트';box.append(h);
-    const p=document.createElement('p');p.textContent=hints.length?asText(hints[Math.min(s.hintIndex++,hints.length-1)]):'등록된 힌트가 없습니다.';box.append(p);
+    const p=document.createElement('div');box.append(p);void renderPrompt(p,hints.length?hints[Math.min(s.hintIndex++,hints.length-1)]:'등록된 힌트가 없습니다.');
   };
   $('solveSolution').onclick=()=>{
     const box=$('solveReveal');box.hidden=false;box.replaceChildren();
     const h=document.createElement('h3');h.textContent='해설';box.append(h);
-    const p=document.createElement('p');p.textContent=solutionText(current());box.append(p);
+    const q=current(),answer=document.createElement('div'),p=document.createElement('div');box.append(answer,p);void renderPrompt(answer,'**정답**\n\n'+asText(q.answer?.displayMd??answerText(q)));void renderPrompt(p,solutionText(q));
   };
   return {
     async load(id,record){

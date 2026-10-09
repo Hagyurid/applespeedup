@@ -24,8 +24,8 @@ function inline(target,text){
   }
   if(cursor<text.length)target.append(document.createTextNode(text.slice(cursor)));
 }
-export function renderNoteMarkdown(target,markdown){
-  mathTasks=[];target.replaceChildren();const lines=compactNoteIntroduction(markdown).replace(/\\\(/g,'$').replace(/\\\)/g,'$').replace(/\\\[/g,()=> '$$').replace(/\\\]/g,()=> '$$').replace(/\r\n?/g,'\n').split('\n');
+export function renderNoteMarkdown(target,markdown,{compactIntroduction=true}={}){
+  mathTasks=[];target.replaceChildren();const lines=(compactIntroduction?compactNoteIntroduction(markdown):String(markdown||'')).replace(/\\\(/g,'$').replace(/\\\)/g,'$').replace(/\\\[/g,()=> '$$').replace(/\\\]/g,()=> '$$').replace(/\r\n?/g,'\n').split('\n');
   let i=0;
   while(i<lines.length){
     const line=lines[i];if(!line.trim()){i++;continue}
