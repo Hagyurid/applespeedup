@@ -24,11 +24,17 @@ function inline(target,text){
   }
   if(cursor<text.length)target.append(document.createTextNode(text.slice(cursor)));
 }
-export function renderNoteMarkdown(target,markdown,{compactIntroduction=true}={}){
+export function renderNoteMarkdown(target,markdown,{compactIntroduction=true,pageBreaks=true}={}){
   mathTasks=[];target.replaceChildren();const lines=(compactIntroduction?compactNoteIntroduction(markdown):String(markdown||'')).replace(/\\\(/g,'$').replace(/\\\)/g,'$').replace(/\\\[/g,()=> '$$').replace(/\\\]/g,()=> '$$').replace(/\r\n?/g,'\n').split('\n');
   let i=0;
   while(i<lines.length){
     const line=lines[i];if(!line.trim()){i++;continue}
+    if(pageBreaks&&/^\s*<!--\s*pagebreak\s*-->\s*$/.test(line)){
+      if(target.childNodes.length&&lines.slice(i+1).some(x=>x.trim()&&!/^\s*<!--\s*pagebreak\s*-->\s*$/.test(x))&&target.lastChild?.className!=='note-page-break'){
+        const marker=el('div');marker.className='note-page-break';marker.setAttribute('role','separator');marker.setAttribute('aria-label','인쇄 쪽 나눔');marker.append(el('span','쪽 나눔'));target.append(marker);
+      }
+      i++;continue;
+    }
     if(line.trim()==='$$'){
       const tex=[];i++;while(i<lines.length&&lines[i].trim()!=='$$')tex.push(lines[i++]);if(i<lines.length)i++;
       const block=el('div',tex.join('\n'));block.className='note-math display';target.append(block);
@@ -55,7 +61,7 @@ export function renderNoteMarkdown(target,markdown,{compactIntroduction=true}={}
     }
     if(/^>\s?/.test(line)){const quote=el('blockquote');while(i<lines.length&&/^>\s?/.test(lines[i])){const p=el('p');inline(p,lines[i++].replace(/^>\s?/,''));quote.append(p)}target.append(quote);continue;}
     const paragraph=[];
-    while(i<lines.length&&lines[i].trim()&&!/^(#{1,6}\s|```|\$\$|>\s?|\s*([-*]|\d+\.)\s+)/.test(lines[i]))paragraph.push(lines[i++]);
+    while(i<lines.length&&lines[i].trim()&&!/^(#{1,6}\s|```|<!--\s*pagebreak\s*-->|\$\$|>\s?|\s*([-*]|\d+\.)\s+)/.test(lines[i]))paragraph.push(lines[i++]);
     if(!paragraph.length){paragraph.push(lines[i++]);}
     const p=el('p');paragraph.forEach((part,index)=>{if(index)p.append(el('br'));inline(p,part)});target.append(p);
   }

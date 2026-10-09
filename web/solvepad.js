@@ -17,7 +17,7 @@ function solutionText(q){
 }
 async function renderPrompt(target,input){
   target.classList.add('solve-math-content');
-  renderNoteMarkdown(target,asText(input),{compactIntroduction:false});
+  renderNoteMarkdown(target,asText(input),{compactIntroduction:false,pageBreaks:false});
   await noteMathReady();
 }
 export function createSolvePad({call,json,notify,onError}){

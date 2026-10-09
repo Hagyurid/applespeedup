@@ -276,6 +276,7 @@ function insertNote(before,after=''){
 }
 $('noteHeading').onclick=()=>insertNote('## ');
 $('noteBold').onclick=()=>insertNote('**','**');
+$('notePageBreak').onclick=()=>insertNote('\n\n<!-- pagebreak -->\n\n');
 $('printNote').onclick=async()=>{state.showNotePreview=true;renderNotePreview();await noteMathReady();await document.fonts.ready;window.print();};
 $('noteBody').addEventListener('input',()=>{if(state.showNotePreview)renderNotePreview();});
 $('pickerSearch').oninput=renderPicker;$('pickerType').onchange=renderPicker;

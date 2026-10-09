@@ -218,3 +218,16 @@ body{background:#f6f7f9}
 .note-preview{white-space:normal;overflow-wrap:break-word;font-size:1rem}.note-math.display{display:block;overflow-x:auto;margin:1em 0}.note-preview .katex{font-size:1.1em}
 @page{size:A4 portrait;margin:16mm}
 @media print{html,body,.workspace-shell,.workspace-main,.notes-layout,.note-editor-card{display:block!important;width:auto!important;max-width:none!important;min-width:0!important;height:auto!important;min-height:0!important;margin:0!important;padding:0!important;background:white!important}.page-head,.note-editor-card>.card-heading,.note-history{display:none!important}.note-editor-card{border:0!important;box-shadow:none!important}.note-preview{padding:0!important;margin:0!important;max-height:none!important;height:auto!important;overflow:visible!important;font-size:11pt!important;color:black!important}.note-preview table{min-width:0!important;table-layout:auto}.note-preview th,.note-preview td{min-width:0!important;padding:5px}.note-table-wrap,.note-math.display{overflow:visible!important}.note-preview pre{white-space:pre-wrap;overflow-wrap:break-word}.note-preview h1,.note-preview h2,.note-preview h3{break-after:avoid}.note-preview tr{break-inside:avoid}}
+
+.note-page-break{display:flex;align-items:center;gap:12px;margin:24px 0;color:#667085;font-size:.875rem}.note-page-break::before,.note-page-break::after{content:"";flex:1;border-top:1px dashed #bac3d1}
+@media print{
+ .note-preview{orphans:3;widows:3}
+ .note-preview h1,.note-preview h2,.note-preview h3,.note-preview h4,.note-preview h5,.note-preview h6{break-inside:avoid;break-after:avoid-page;page-break-after:avoid}
+ .note-preview p,.note-preview li{orphans:3;widows:3}
+ .note-preview .note-math.display,.note-preview .katex-display,.note-preview pre,.note-preview blockquote,.note-preview li,.note-preview tr{break-inside:avoid-page;page-break-inside:avoid}
+ .note-preview thead{display:table-header-group}.note-preview tfoot{display:table-footer-group}
+ .note-preview .note-table-wrap{break-inside:auto}
+ .note-preview .note-page-break{display:block!important;height:0!important;margin:0!important;padding:0!important;border:0!important;break-after:page;page-break-after:always}
+ .note-preview .note-page-break>*{display:none!important}.note-preview .note-page-break::before,.note-preview .note-page-break::after{display:none!important}
+ .note-preview .note-page-break+h1,.note-preview .note-page-break+h2,.note-preview .note-page-break+h3{margin-top:0}
+}
